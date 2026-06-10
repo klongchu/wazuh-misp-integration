@@ -1,9 +1,11 @@
 #!/bin/bash
 set -e
 
-echo "================================================="
-echo " Wazuh 4.14.x + MISP Server Setup"
-echo "================================================="
+echo "╔══════════════════════════════════════════════╗"
+echo "║            KLONGCHU DEV TOOLKIT             ║"
+echo "║         Wazuh + MISP Setup           ║"
+echo "╚══════════════════════════════════════════════╝"
+echo ""
 
 read -p "MISP URL เช่น https://misp.domain.local: " MISP_URL
 read -s -p "MISP API/Auth Key: " MISP_KEY
@@ -28,12 +30,13 @@ OSSEC_CONF="/var/ossec/etc/ossec.conf"
 CUSTOM_MISP="$INTEGRATION_DIR/custom-misp"
 CUSTOM_MISP_PY="$INTEGRATION_DIR/custom-misp.py"
 MISP_RULE="$RULE_DIR/custom_misp_rules.xml"
+LOCAL_RULES="$RULE_DIR/local_rules.xml"
 
-echo "[1/7] Install dependencies"
+echo "[1/8] Install dependencies"
 apt-get update -qq
 apt-get install -y curl python3-requests >/dev/null
 
-echo "[2/7] Create custom-misp wrapper"
+echo "[2/8] Create custom-misp wrapper"
 
 if [ -f "$CUSTOM_MISP" ]; then
   echo "[SKIP] $CUSTOM_MISP already exists"
@@ -58,7 +61,7 @@ EOF
   echo "[OK] Created $CUSTOM_MISP"
 fi
 
-echo "[3/7] Install custom-misp.py"
+echo "[3/8] Install custom-misp.py"
 
 if [ -f "$CUSTOM_MISP_PY" ]; then
   echo "[FOUND] $CUSTOM_MISP_PY already exists"
@@ -76,7 +79,7 @@ else
   echo "[OK] Downloaded custom-misp.py"
 fi
 
-echo "[4/7] Configure MISP URL/API Key in custom-misp.py"
+echo "[4/8] Configure MISP URL/API Key"
 
 if grep -q "misp_base_url" "$CUSTOM_MISP_PY"; then
   sed -i "s|misp_base_url = .*|misp_base_url = \"${MISP_URL}/attributes/restSearch/\"|g" "$CUSTOM_MISP_PY"
@@ -89,7 +92,7 @@ fi
 chown root:wazuh "$CUSTOM_MISP_PY"
 chmod 750 "$CUSTOM_MISP_PY"
 
-echo "[5/7] Install MISP rules"
+echo "[5/8] Install MISP rules"
 
 mkdir -p "$RULE_DIR"
 
@@ -129,7 +132,7 @@ EOF
   echo "[OK] Created $MISP_RULE"
 fi
 
-echo "[6/7] Configure ossec.conf integration"
+echo "[6/8] Configure ossec.conf integration"
 
 cp "$OSSEC_CONF" "$OSSEC_CONF.bak.$(date +%Y%m%d_%H%M%S)"
 
@@ -146,7 +149,41 @@ else
   echo "[OK] Added custom-misp integration to ossec.conf"
 fi
 
-echo "[7/7] Restart Wazuh Manager"
+echo "[7/8] Verify/Create Sysmon Event ID 22 rule"
+
+if grep -R "sysmon_event_22" /var/ossec/ruleset/rules/ "$RULE_DIR" >/dev/null 2>&1; then
+  echo "[OK] Sysmon Event ID 22 rule already exists"
+else
+  echo "[INFO] Missing sysmon_event_22 rule. Adding Rule ID 61650 to local_rules.xml"
+
+  if [ ! -f "$LOCAL_RULES" ]; then
+cat > "$LOCAL_RULES" <<'EOF'
+<group name="local,syslog,sshd,">
+</group>
+EOF
+  fi
+
+  cp "$LOCAL_RULES" "$LOCAL_RULES.bak.$(date +%Y%m%d_%H%M%S)"
+
+  if grep -q 'id="61650"' "$LOCAL_RULES"; then
+    echo "[SKIP] Rule ID 61650 already exists in local_rules.xml"
+  else
+    sed -i '/<\/group>/i\
+  <rule id="61650" level="8" overwrite="yes">\
+    <if_sid>61600</if_sid>\
+    <field name="win.system.eventID">^22$</field>\
+    <description>Sysmon - Event ID 22: DNSEvent (DNS query)</description>\
+    <options>no_full_log</options>\
+    <group>sysmon_event_22,</group>\
+  </rule>' "$LOCAL_RULES"
+
+    chown root:wazuh "$LOCAL_RULES"
+    chmod 640 "$LOCAL_RULES"
+    echo "[OK] Added Rule ID 61650"
+  fi
+fi
+
+echo "[8/8] Restart Wazuh Manager"
 
 systemctl restart wazuh-manager
 
@@ -154,10 +191,12 @@ echo ""
 echo "================================================="
 echo " DONE"
 echo "================================================="
-echo "Files:"
+echo "MISP Rule:"
+echo "- $MISP_RULE"
+echo ""
+echo "Integration:"
 echo "- $CUSTOM_MISP"
 echo "- $CUSTOM_MISP_PY"
-echo "- $MISP_RULE"
 echo ""
 echo "Check:"
 echo "systemctl status wazuh-manager"
