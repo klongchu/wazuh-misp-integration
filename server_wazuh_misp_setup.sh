@@ -43,18 +43,9 @@ if [ -f "$CUSTOM_MISP" ]; then
 else
 cat > "$CUSTOM_MISP" <<'EOF'
 #!/bin/sh
-
-WPYTHON_BIN="framework/python/bin/python3"
-SCRIPT_PATH="$0"
-DIR_NAME="$(cd "$(dirname "$SCRIPT_PATH")"; pwd -P)"
-SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
-
-case "$SCRIPT_NAME" in
-  custom-misp)
-    exec "$DIR_NAME/$WPYTHON_BIN" "$DIR_NAME/custom-misp.py" "$@"
-    ;;
-esac
+exec /var/ossec/framework/python/bin/python3 /var/ossec/integrations/custom-misp.py "$@"
 EOF
+sed -i 's/\r$//' "$CUSTOM_MISP"
 
   chown root:wazuh "$CUSTOM_MISP"
   chmod 750 "$CUSTOM_MISP"
@@ -78,6 +69,8 @@ else
   curl -L -o "$CUSTOM_MISP_PY" https://pastebin.com/raw/khkh3nUr
   echo "[OK] Downloaded custom-misp.py"
 fi
+
+sed -i 's/\r$//' "$CUSTOM_MISP_PY"
 
 echo "[4/8] Configure MISP URL/API Key"
 
