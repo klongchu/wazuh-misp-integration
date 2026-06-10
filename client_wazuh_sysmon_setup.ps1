@@ -84,7 +84,35 @@ if ($Content -notmatch "Microsoft-Windows-Sysmon/Operational") {
 }
 
 Write-Host "[7/7] Restart Wazuh Agent"
-Restart-Service WazuhSvc -Force
+
+$WazuhService = Get-Service -ErrorAction SilentlyContinue |
+Where-Object {
+    ($_.Name -match 'wazuh|ossec') -or
+    ($_.DisplayName -match 'wazuh|ossec')
+} |
+Select-Object -First 1
+
+if ($null -eq $WazuhService) {
+    Write-Host "[WARNING] Not found Wazuh Agent Service"
+    Write-Host "Run this command to check:"
+    Write-Host "Get-Service | Where-Object { `$_.Name -match 'wazuh|ossec' -or `$_.DisplayName -match 'wazuh|ossec' }"
+}
+else {
+    Write-Host ("[OK] Found Wazuh Service: {0} / {1}" -f $WazuhService.Name, $WazuhService.DisplayName)
+
+    if ($WazuhService.Status -eq 'Running') {
+        Restart-Service -Name $WazuhService.Name -Force
+    }
+    else {
+        Start-Service -Name $WazuhService.Name
+    }
+}
 
 Write-Host "DONE"
-Get-Service WazuhSvc, Sysmon64 | Format-Table -AutoSize
+
+Get-Service -ErrorAction SilentlyContinue |
+Where-Object {
+    ($_.Name -match 'wazuh|ossec|Sysmon64') -or
+    ($_.DisplayName -match 'wazuh|ossec|Sysmon')
+} |
+Format-Table Name, DisplayName, Status -AutoSize
