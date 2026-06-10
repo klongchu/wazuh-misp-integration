@@ -136,8 +136,8 @@ echo "[6/8] Configure ossec.conf integration"
 
 cp "$OSSEC_CONF" "$OSSEC_CONF.bak.$(date +%Y%m%d_%H%M%S)"
 
-if grep -q "<name>custom-misp</name>" "$OSSEC_CONF"; then
-  echo "[SKIP] custom-misp integration already exists in ossec.conf"
+if grep -q "<name>custom-misp.py</name>" "$OSSEC_CONF"; then
+  echo "[SKIP] custom-misp.py integration already exists in ossec.conf"
 else
   sed -i '/<\/global>/a\
 \
