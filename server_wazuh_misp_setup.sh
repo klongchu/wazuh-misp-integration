@@ -137,9 +137,11 @@ echo "[6/8] Configure ossec.conf integration"
 cp "$OSSEC_CONF" "$OSSEC_CONF.bak.$(date +%Y%m%d_%H%M%S)"
 
 if grep -q "<name>custom-misp.py</name>" "$OSSEC_CONF"; then
-  echo "[SKIP] custom-misp.py integration already exists in ossec.conf"
-else
-  sed -i '/<\/global>/a\
+  perl -0pi -e 's/\n\s*<integration>\s*\n\s*<name>custom-misp\.py<\/name>\s*\n\s*<group>[^<]*<\/group>\s*\n\s*<alert_format>json<\/alert_format>\s*\n\s*<\/integration>//g' "$OSSEC_CONF"
+  echo "[OK] Removed old custom-misp.py integration from ossec.conf"
+fi
+
+sed -i '/<\/global>/a\
 \
   <integration>\
     <name>custom-misp.py</name>\
@@ -147,8 +149,7 @@ else
     <alert_format>json</alert_format>\
   </integration>' "$OSSEC_CONF"
 
-  echo "[OK] Added custom-misp integration to ossec.conf"
-fi
+echo "[OK] Added custom-misp.py integration to ossec.conf"
 
 echo "[7/8] Verify/Create Sysmon Event ID 22 rule"
 
