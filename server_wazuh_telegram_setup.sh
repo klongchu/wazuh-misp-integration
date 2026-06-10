@@ -102,13 +102,9 @@ if [ -f "$CUSTOM_TELEGRAM" ]; then
 else
 cat > "$CUSTOM_TELEGRAM" <<'EOF'
 #!/bin/sh
-
-WPYTHON_BIN="framework/python/bin/python3"
-SCRIPT_PATH="$0"
-DIR_NAME="$(cd "$(dirname "$SCRIPT_PATH")"; pwd -P)"
-
-exec "$DIR_NAME/$WPYTHON_BIN" "$DIR_NAME/custom-telegram.py" "$@"
+exec /var/ossec/framework/python/bin/python3 /var/ossec/integrations/custom-telegram.py "$@"
 EOF
+sed -i 's/\r$//' "$CUSTOM_TELEGRAM"
 
   chown root:wazuh "$CUSTOM_TELEGRAM"
   chmod 750 "$CUSTOM_TELEGRAM"
