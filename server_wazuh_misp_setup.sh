@@ -139,9 +139,10 @@ cp "$OSSEC_CONF" "$OSSEC_CONF.bak.$(date +%Y%m%d_%H%M%S)"
 if grep -q "<name>custom-misp</name>" "$OSSEC_CONF"; then
   echo "[SKIP] custom-misp integration already exists in ossec.conf"
 else
-  sed -i '/<\/ossec_config>/i\
+  sed -i '/<\/global>/a\
+\
   <integration>\
-    <name>custom-misp</name>\
+    <name>custom-misp.py</name>\
     <group>sysmon_event1,sysmon_event3,sysmon_event6,sysmon_event7,sysmon_event_15,sysmon_event_22,syscheck</group>\
     <alert_format>json</alert_format>\
   </integration>' "$OSSEC_CONF"
