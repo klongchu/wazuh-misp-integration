@@ -10,7 +10,7 @@
 | `client_wazuh_sysmon_setup.ps1` | ติดตั้ง Wazuh Agent + Sysmon + Windows Active Response ฝั่ง Client แบบไฟล์เดียว |
 | `Lab-Wazuh-Guild/` | เอกสาร Lab HTML และรูปประกอบ |
 
-> ใช้งานจริงแนะนำใช้ `nano install-wazuh-misp-full.sh` และ `client_wazuh_sysmon_setup.ps1` เป็นหลัก
+> ใช้งานจริงแนะนำใช้ `install-wazuh-misp-full.sh` และ `client_wazuh_sysmon_setup.ps1` เป็นหลัก
 
 ## ลำดับการติดตั้ง
 
@@ -19,7 +19,7 @@
 รันบน Ubuntu/Wazuh Manager:
 
 ```bash
-sudo bash "nano install-wazuh-misp-full.sh"
+sudo bash install-wazuh-misp-full.sh
 ```
 
 สคริปต์จะถามค่าเหล่านี้:
@@ -180,7 +180,7 @@ Remove-NetFirewallRule -DisplayName $ruleName
 Server:
 
 ```bash
-sudo bash "nano install-wazuh-misp-full.sh"
+sudo bash install-wazuh-misp-full.sh
 ```
 
 Windows Client:
