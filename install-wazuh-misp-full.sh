@@ -15,6 +15,54 @@ LIST_DIR="$OSSEC_DIR/etc/lists"
 AR_DIR="$OSSEC_DIR/active-response/bin"
 
 BACKUP_DIR="/root/wazuh-misp-backup-$(date +%F-%H%M%S)"
+MISP_RULE_FILE="$RULE_DIR/misp.xml"
+TELEGRAM_WRAPPER_FILE="$INTEGRATION_DIR/custom-telegram"
+TELEGRAM_PY_FILE="$INTEGRATION_DIR/custom-telegram.py"
+LINUX_AR_FILE="$AR_DIR/block-misp-ioc.sh"
+WINDOWS_AR_DIR="/root/wazuh-windows-active-response"
+WINDOWS_AR_BAT="$WINDOWS_AR_DIR/action-script.bat"
+WINDOWS_AR_PS1="$WINDOWS_AR_DIR/block-malicious.ps1"
+
+backup_file_if_exists() {
+  local file="$1"
+  if [ -f "$file" ]; then
+    local safe_name
+    safe_name=$(echo "$file" | sed 's#/#_#g')
+    cp "$file" "$BACKUP_DIR/${safe_name}.bak"
+  fi
+}
+
+upsert_managed_block() {
+  local file="$1"
+  local marker="$2"
+  local content="$3"
+
+  python3 - "$file" "$marker" "$content" <<'PY'
+import sys
+from pathlib import Path
+
+file_path = Path(sys.argv[1])
+marker = sys.argv[2]
+content = sys.argv[3]
+start = f"<!-- {marker}:BEGIN -->"
+end = f"<!-- {marker}:END -->"
+block = f"{start}\n{content}\n{end}"
+text = file_path.read_text(encoding="utf-8")
+
+if start in text and end in text:
+    s = text.index(start)
+    e = text.index(end, s) + len(end)
+    text = text[:s] + block + text[e:]
+elif content in text:
+    pass
+elif "</ossec_config>" in text:
+    text = text.replace("</ossec_config>", block + "\n</ossec_config>", 1)
+else:
+    raise SystemExit("Missing </ossec_config> in ossec.conf")
+
+file_path.write_text(text, encoding="utf-8")
+PY
+}
 
 echo "=============================================="
 echo " Wazuh + MISP Full IOC Detection Installer"
@@ -62,8 +110,26 @@ if [[ "$SET_HOSTNAME" =~ ^[Yy]$ ]]; then
   fi
 fi
 
-if [ -f "$INTEGRATION_DIR/custom-misp" ] || [ -f "$RULE_DIR/misp.xml" ]; then
-  read -p "พบการติดตั้ง Wazuh MISP Integration แล้ว ต้องการติดตั้งทับหรือไม่? [y/N]: " OVERWRITE_INSTALL
+EXISTING_FILES=(
+  "$INTEGRATION_DIR/custom-misp"
+  "$MISP_RULE_FILE"
+  "$TELEGRAM_WRAPPER_FILE"
+  "$TELEGRAM_PY_FILE"
+  "$LINUX_AR_FILE"
+  "$WINDOWS_AR_BAT"
+  "$WINDOWS_AR_PS1"
+)
+
+FOUND_EXISTING=0
+for file in "${EXISTING_FILES[@]}"; do
+  if [ -f "$file" ]; then
+    FOUND_EXISTING=1
+    echo "[INFO] พบไฟล์เดิม: $file"
+  fi
+done
+
+if [ "$FOUND_EXISTING" -eq 1 ]; then
+  read -p "พบการติดตั้ง Wazuh MISP Integration เดิมหรือไฟล์ซ้ำในระบบ ต้องการติดตั้งทับหรือไม่? [y/N]: " OVERWRITE_INSTALL
   if [[ ! "$OVERWRITE_INSTALL" =~ ^[Yy]$ ]]; then
     echo "[INFO] ยกเลิกการติดตั้ง"
     exit 0
@@ -77,6 +143,10 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 cp "$OSSEC_CONF" "$BACKUP_DIR/ossec.conf.bak"
+
+for file in "${EXISTING_FILES[@]}"; do
+  backup_file_if_exists "$file"
+done
 
 echo "[1/10] Install packages"
 apt update
@@ -98,7 +168,7 @@ sed -i "s|^MISP_BASE_URL *=.*|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearc
 sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
 
 echo "[4/10] Create MISP rules"
-cat > "$RULE_DIR/misp.xml" <<'EOF'
+cat > "$MISP_RULE_FILE" <<'EOF'
 <group name="misp,threat_intel,ioc,">
 
   <rule id="100800" level="10">
@@ -151,8 +221,8 @@ cat > "$RULE_DIR/misp.xml" <<'EOF'
 </group>
 EOF
 
-chown root:wazuh "$RULE_DIR/misp.xml"
-chmod 660 "$RULE_DIR/misp.xml"
+chown root:wazuh "$MISP_RULE_FILE"
+chmod 660 "$MISP_RULE_FILE"
 
 echo "[5/10] Create local IOC CDB lists"
 mkdir -p "$LIST_DIR"
@@ -170,17 +240,14 @@ if ! grep -q "etc/lists/malware-hashes" "$OSSEC_CONF"; then
 fi
 
 echo "[6/10] Add MISP integration to ossec.conf"
-if ! grep -q "<name>custom-misp</name>" "$OSSEC_CONF"; then
-  sed -i '/<\/ossec_config>/i\
-  <integration>\
-    <name>custom-misp</name>\
+upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
+    <name>custom-misp</name>
     <group>sysmon_event_1,sysmon_event_3,sysmon_event_6,sysmon_event_7,sysmon_event_22,web,syscheck,</group>
-    <alert_format>json</alert_format>\
-  </integration>' "$OSSEC_CONF"
-fi
+    <alert_format>json</alert_format>
+  </integration>'
 
 echo "[7/10] Add Telegram custom integration"
-cat > "$INTEGRATION_DIR/custom-telegram" <<'EOF'
+cat > "$TELEGRAM_WRAPPER_FILE" <<'EOF'
 #!/bin/bash
 WPYTHON_BIN="framework/python/bin/python3"
 SCRIPT_PATH_NAME="$0"
@@ -209,7 +276,7 @@ esac
 ${WAZUH_PATH}/${WPYTHON_BIN} ${PYTHON_SCRIPT} "$@"
 EOF
 
-cat > "$INTEGRATION_DIR/custom-telegram.py" <<EOF
+cat > "$TELEGRAM_PY_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
 import sys, json, requests
 
@@ -249,20 +316,17 @@ msg = f"""
 send(msg)
 EOF
 
-chmod 750 "$INTEGRATION_DIR/custom-telegram" "$INTEGRATION_DIR/custom-telegram.py"
-chown root:wazuh "$INTEGRATION_DIR/custom-telegram" "$INTEGRATION_DIR/custom-telegram.py"
+chmod 750 "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
+chown root:wazuh "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
 
-if ! grep -q "<name>custom-telegram</name>" "$OSSEC_CONF"; then
-  sed -i '/<\/ossec_config>/i\
-  <integration>\
-    <name>custom-telegram</name>\
-    <rule_id>100800,100801,100802,100803,100804,100805</rule_id>\
-    <alert_format>json</alert_format>\
-  </integration>' "$OSSEC_CONF"
-fi
+upsert_managed_block "$OSSEC_CONF" "WAZUH_TELEGRAM_INTEGRATION" '  <integration>
+    <name>custom-telegram</name>
+    <rule_id>100800,100801,100802,100803,100804,100805</rule_id>
+    <alert_format>json</alert_format>
+  </integration>'
 
 echo "[8/10] Create Linux Active Response script"
-cat > "$AR_DIR/block-misp-ioc.sh" <<'EOF'
+cat > "$LINUX_AR_FILE" <<'EOF'
 #!/bin/bash
 ACTION=$1
 USER=$2
@@ -292,36 +356,33 @@ fi
 exit 0
 EOF
 
-chmod 750 "$AR_DIR/block-misp-ioc.sh"
-chown root:wazuh "$AR_DIR/block-misp-ioc.sh"
+chmod 750 "$LINUX_AR_FILE"
+chown root:wazuh "$LINUX_AR_FILE"
 
 if [ "$ENABLE_ACTIVE_RESPONSE" = "yes" ]; then
-  if ! grep -q "<name>block-misp-ioc</name>" "$OSSEC_CONF"; then
-    sed -i '/<\/ossec_config>/i\
-  <command>\
-    <name>block-misp-ioc</name>\
-    <executable>block-misp-ioc.sh</executable>\
-    <timeout_allowed>yes</timeout_allowed>\
-  </command>\
-\
-  <active-response>\
-    <command>block-misp-ioc</command>\
-    <location>local</location>\
-    <rules_id>100801</rules_id>\
-    <timeout>'"$ACTIVE_RESPONSE_TIMEOUT"'</timeout>\
-  </active-response>' "$OSSEC_CONF"
-  fi
+  upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_ACTIVE_RESPONSE" "  <command>
+    <name>block-misp-ioc</name>
+    <executable>block-misp-ioc.sh</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <active-response>
+    <command>block-misp-ioc</command>
+    <location>local</location>
+    <rules_id>100801</rules_id>
+    <timeout>${ACTIVE_RESPONSE_TIMEOUT}</timeout>
+  </active-response>"
 fi
 
 echo "[9/10] Create Windows Active Response files"
-mkdir -p /root/wazuh-windows-active-response
+mkdir -p "$WINDOWS_AR_DIR"
 
-cat > /root/wazuh-windows-active-response/action-script.bat <<'EOF'
+cat > "$WINDOWS_AR_BAT" <<'EOF'
 @echo off
 powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files (x86)\ossec-agent\active-response\bin\block-malicious.ps1"
 EOF
 
-cat > /root/wazuh-windows-active-response/block-malicious.ps1 <<'EOF'
+cat > "$WINDOWS_AR_PS1" <<'EOF'
 $inputJson = [Console]::In.ReadToEnd()
 $log = "C:\Program Files (x86)\ossec-agent\active-response\active-response.log"
 
@@ -393,11 +454,11 @@ echo "=============================================="
 echo "DONE"
 echo "Backup: $BACKUP_DIR"
 echo ""
-echo "Rules: $RULE_DIR/misp.xml"
+echo "Rules: $MISP_RULE_FILE"
 echo "MISP Integration: $INTEGRATION_DIR/custom-misp"
-echo "Telegram Integration: $INTEGRATION_DIR/custom-telegram.py"
-echo "Linux Active Response: $AR_DIR/block-misp-ioc.sh"
-echo "Windows AR files: /root/wazuh-windows-active-response/"
+echo "Telegram Integration: $TELEGRAM_PY_FILE"
+echo "Linux Active Response: $LINUX_AR_FILE"
+echo "Windows AR files: $WINDOWS_AR_DIR/"
 echo ""
 echo "ตรวจสอบ:"
 echo "systemctl status wazuh-manager"
