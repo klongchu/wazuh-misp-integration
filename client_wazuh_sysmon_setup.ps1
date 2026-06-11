@@ -298,10 +298,15 @@ Write-Host "[9/10] Restart Wazuh Agent"
 
 $WazuhService = $null
 for ($i = 1; $i -le 12; $i++) {
-    $WazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$' } | Select-Object -First 1
+    $WazuhService = Get-Service -Name WazuhSvc -ErrorAction SilentlyContinue
+    if ($null -eq $WazuhService) {
+        $WazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$' } | Select-Object -First 1
+    }
+
     if ($null -ne $WazuhService) {
         break
     }
+
     Write-Host "[INFO] Waiting for Wazuh Agent service... ($i/12)"
     Start-Sleep -Seconds 5
 }
@@ -314,7 +319,7 @@ if ($null -eq $WazuhService) {
     exit 1
 }
 
-Write-Host ("[OK] Found Wazuh Service: {0} / {1}" -f $WazuhService.Name, $WazuhService.DisplayName)
+Write-Host ("[OK] Found Wazuh Service: {0} / {1} / Status: {2}" -f $WazuhService.Name, $WazuhService.DisplayName, $WazuhService.Status)
 
 try {
     if ($WazuhService.Status -eq 'Running') {
@@ -329,15 +334,17 @@ catch {
     Write-Host "[ERROR] Message: $($_.Exception.Message)"
     Write-Host "[INFO] Check Wazuh log: C:\Program Files (x86)\ossec-agent\ossec.log"
     Write-Host "[INFO] Check MSI log: $WazuhMsiLog"
+    Write-Host "[INFO] Try start manually: Start-Service WazuhSvc"
     exit 1
 }
 
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 10
 $WazuhService = Get-Service -Name $WazuhService.Name -ErrorAction SilentlyContinue
 if ($null -eq $WazuhService -or $WazuhService.Status -ne 'Running') {
     Write-Host "[ERROR] Wazuh service still not running after start attempt: $($WazuhService.Name)"
     Write-Host "[INFO] Check Wazuh log: C:\Program Files (x86)\ossec-agent\ossec.log"
     Write-Host "[INFO] Check MSI log: $WazuhMsiLog"
+    Write-Host "[INFO] Try start manually: Start-Service WazuhSvc"
     exit 1
 }
 
