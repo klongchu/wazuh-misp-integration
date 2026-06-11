@@ -8,6 +8,9 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+command -v curl >/dev/null 2>&1 || { echo >&2 "[ERROR] curl is required but not installed. Aborting."; exit 1; }
+command -v apt >/dev/null 2>&1 || { echo >&2 "[ERROR] apt is required but not installed. Aborting."; exit 1; }
+
 echo "=============================================="
 echo " Wazuh Agent + Active Response Setup"
 echo "=============================================="

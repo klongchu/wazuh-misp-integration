@@ -1,4 +1,16 @@
 #requires -RunAsAdministrator
+# Check for required commands
+if (-not (Get-Command msiexec.exe -ErrorAction SilentlyContinue)) {
+    Write-Host "[ERROR] msiexec.exe not found. Please ensure it is available in your system PATH."
+    exit 1
+}
+
+# Check for curl equivalent (Invoke-WebRequest)
+if (-not (Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue)) {
+    Write-Host "[ERROR] Invoke-WebRequest not found. Please ensure PowerShell is updated or provide an alternative download method."
+    exit 1
+}
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "=============================================="

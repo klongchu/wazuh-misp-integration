@@ -236,4 +236,13 @@ Remove-NetFirewallRule -DisplayName $ruleName
 - หากเคยติดตั้ง Wazuh Agent มาก่อน สคริปต์จะ install/update ทับผ่าน MSI
 - หาก Active Response ไม่ทำงาน ให้เช็ค config ฝั่ง Wazuh Manager ใน `ossec.conf`
 - ไฟล์แยก `action-script.bat` และ `block-malicious.ps1` ไม่มีแล้ว; รวมเข้า `client_wazuh_sysmon_setup.ps1` แล้ว
+- หากต้องการ unblock IP ที่ถูก block ไปแล้ว ให้รันคำสั่ง PowerShell นี้บน Windows Client:
+  ```powershell
+  # Example: Unblock IP 192.168.1.100
+  $Ioc = "192.168.1.100"
+  $RuleName = "Wazuh MISP Block $Ioc"
+  Get-NetFirewallRule -DisplayName $RuleName | Remove-NetFirewallRule
+  New-NetFirewallRule -DisplayName "$RuleName Inbound" -Direction Inbound -RemoteAddress $Ioc -Action Allow -Profile Any -Enabled True
+  New-NetFirewallRule -DisplayName "$RuleName Outbound" -Direction Outbound -RemoteAddress $Ioc -Action Allow -Profile Any -Enabled True
+  ```
 
