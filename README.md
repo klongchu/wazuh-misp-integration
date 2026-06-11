@@ -1,5 +1,23 @@
 # Wazuh + MISP + Telegram + Windows Active Response
 
+![Wazuh](https://img.shields.io/badge/Wazuh-4.x-blue?style=for-the-badge&logo=wazuh&logoColor=white)
+![MISP](https://img.shields.io/badge/MISP-Threat%20Intelligence-green?style=for-the-badge&logo=misp&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram-Notifications-blue?style=for-the-badge&logo=telegram&logoColor=white)
+![PowerShell](https://img.shields.io/badge/PowerShell-Windows%20Client-blue?style=for-the-badge&logo=powershell&logoColor=white)
+![Bash](https://img.shields.io/badge/Bash-Linux%20Scripts-green?style=for-the-badge&logo=gnu-bash&logoColor=white)
+![Sysmon](https://img.shields.io/badge/Sysmon-Event%20Logging-purple?style=for-the-badge&logo=windows&logoColor=white)
+![Ubuntu](https://img.shields.io/badge/Ubuntu-Server%2FClient-orange?style=for-the-badge&logo=ubuntu&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-Client-blue?style=for-the-badge&logo=windows&logoColor=white)
+
+## ✨ คุณสมบัติหลัก
+
+- 🛡️ **Wazuh Manager Setup**: ติดตั้งและตั้งค่า Wazuh Manager บน Ubuntu.
+- 🚨 **MISP Integration**: เชื่อมต่อกับ MISP เพื่อรับ Threat Intelligence.
+- 💬 **Telegram Notifications**: แจ้งเตือนผ่าน Telegram เมื่อมี Alert สำคัญ.
+- 🚀 **Active Response**: กลไกตอบโต้ภัยคุกคามอัตโนมัติ (IP Blocking) บน Windows และ Linux.
+- 💻 **Windows Client Setup**: ติดตั้ง Wazuh Agent, Sysmon, และ Active Response บน Windows.
+- 🐧 **Linux Client Setup**: ติดตั้ง Wazuh Agent และ Active Response บน Linux.
+
 โปรเจกต์นี้ใช้ติดตั้ง Lab Wazuh ที่เชื่อมกับ MISP และ Telegram พร้อม Windows client ที่ติดตั้ง Wazuh Agent + Sysmon + Active Response สำหรับ block IP อัตโนมัติ
 
 ## ไฟล์หลัก
@@ -183,10 +201,12 @@ C:\Program Files (x86)\ossec-agent\active-response\active-response.log
 ## ตรวจสอบ Service บน Windows
 
 ```powershell
-Get-Service | Where-Object { $_.Name -match 'wazuh|ossec|Sysmon64' -or $_.DisplayName -match 'wazuh|ossec|Sysmon' }
+Get-Service | Where-Object { $_.Name -match '^wazuh-agent$|^ossec-agent$|Sysmon64' -or $_.DisplayName -match '^Wazuh Agent$|Sysmon' }
 ```
 
 ควรเห็น service ของ Wazuh Agent และ Sysmon ทำงานอยู่
+
+> ถ้าติดตั้งสำเร็จ service มักชื่อ `wazuh-agent` หรือ `ossec-agent` ไม่ใช่แค่ชื่อมีคำว่า `wazuh` เฉยๆ
 
 ## ตรวจสอบ Sysmon EventChannel ใน Wazuh Agent
 
