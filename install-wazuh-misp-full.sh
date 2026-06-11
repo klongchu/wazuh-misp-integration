@@ -171,7 +171,7 @@ if [ -f custom-misp ]; then
   cp custom-misp "$BACKUP_DIR/custom-misp.bak"
 fi
 
-wget -O custom-misp https://raw.githubusercontent.com/cti-misp/MISP/refs/heads/main/integrations/custom-misp
+wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-misp
 chmod 750 custom-misp
 chown root:wazuh custom-misp
 

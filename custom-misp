@@ -8,15 +8,11 @@ import re
 import requests
 from requests.exceptions import ConnectionError, Timeout, RequestException
 
-# =========================
 # Wazuh queue socket
-# =========================
 pwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 socket_addr = f"{pwd}/queue/sockets/queue"
 
-# =========================
 # MISP configuration
-# =========================
 MISP_BASE_URL = "https://{IP/Domain MISP}/attributes/restSearch/"
 MISP_API_KEY = "API Key"
 
@@ -25,23 +21,6 @@ MISP_HEADERS = {
     "Authorization": MISP_API_KEY,
     "Accept": "application/json",
 }
-
-# =========================
-# Local allowlist
-# เพิ่ม domain ที่ไม่ต้องการให้แจ้งเตือนซ้ำ
-# =========================
-LOCAL_ALLOW_DOMAINS = [
-    "huggingface.co",
-    "router.huggingface.co",
-    "*.huggingface.co",
-    "telegram.org",
-    "*.telegram.org",
-    "canva.com",
-    "www.canva.com",
-    "*.canva.com",
-    "canvasusercontent.com",
-    "canva-apps.com",
-]
 
 
 def send_event(msg, agent=None):
@@ -56,6 +35,22 @@ def send_event(msg, agent=None):
     with socket(AF_UNIX, SOCK_DGRAM) as sock:
         sock.connect(socket_addr)
         sock.send(message.encode())
+
+
+def normalize_value(value):
+    if not value:
+        return None
+
+    value = str(value).strip().lower()
+    value = value.rstrip(".")
+
+    value = re.sub(r"^https?://", "", value)
+    value = value.split("/")[0]
+
+    if ":" in value and not re.match(r"^[a-f0-9:]+$", value):
+        value = value.split(":")[0]
+
+    return value
 
 
 def extract_event_param(alert):
@@ -112,56 +107,11 @@ def extract_event_param(alert):
     return None
 
 
-def normalize_value(value):
-    if not value:
-        return None
-
-    value = str(value).strip().lower()
-
-    # ตัด dot ท้าย DNS เช่น example.com.
-    value = value.rstrip(".")
-
-    # ตัด http:// หรือ https:// แบบง่าย
-    value = re.sub(r"^https?://", "", value)
-
-    # ถ้าเป็น URL ให้เอาเฉพาะ host
-    value = value.split("/")[0]
-
-    # ตัด port เช่น example.com:443
-    if ":" in value and not re.match(r"^[a-f0-9:]+$", value):
-        value = value.split(":")[0]
-
-    return value
-
-
-def domain_match(value, pattern):
-    value = normalize_value(value)
-    pattern = normalize_value(pattern)
-
-    if not value or not pattern:
-        return False
-
-    if pattern.startswith("*."):
-        base = pattern[2:]
-        return value == base or value.endswith("." + base)
-
-    return value == pattern
-
-
-def is_local_allowlisted(value):
-    for pattern in LOCAL_ALLOW_DOMAINS:
-        if domain_match(value, pattern):
-            return True
-    return False
-
-
 def query_misp(value):
     payload = {
         "value": value,
         "to_ids": 1,
         "includeWarninglistHits": True,
-        "includeEventTags": True,
-        "includeAttributeTags": True,
     }
 
     try:
@@ -185,61 +135,9 @@ def query_misp(value):
 
 
 def is_warninglist_hit(attribute):
-    if attribute.get("warninglist_hit") is True:
-        return True
+    warnings = attribute.get("warnings", [])
 
-    if attribute.get("warninglist_hits"):
-        return True
-
-    if attribute.get("Warninglist"):
-        return True
-
-    if attribute.get("warnings"):
-        return True
-
-    event = attribute.get("Event", {})
-    if event.get("warninglist_hit") is True:
-        return True
-
-    if event.get("warninglist_hits"):
-        return True
-
-    return False
-
-
-def has_false_positive_tag(attribute):
-    tag_names = []
-
-    for tag in attribute.get("Tag", []):
-        tag_names.append(str(tag.get("name", "")).lower())
-
-    event = attribute.get("Event", {})
-    for tag in event.get("Tag", []):
-        tag_names.append(str(tag.get("name", "")).lower())
-
-    fp_keywords = [
-        "false-positive",
-        "false positive",
-        "whitelist",
-        "allowlist",
-        "trusted",
-        "known-good",
-        "known good",
-    ]
-
-    return any(keyword in tag for tag in tag_names for keyword in fp_keywords)
-
-
-def should_ignore_attribute(attribute):
-    value = attribute.get("value", "")
-
-    if is_local_allowlisted(value):
-        return True
-
-    if is_warninglist_hit(attribute):
-        return True
-
-    if has_false_positive_tag(attribute):
+    if warnings:
         return True
 
     return False
@@ -256,9 +154,11 @@ def handle_misp_response(misp_api_response, alert, alert_output):
     attributes = misp_api_response.get("response", {}).get("Attribute", [])
 
     valid_attributes = []
+
     for attribute in attributes:
-        if should_ignore_attribute(attribute):
+        if is_warninglist_hit(attribute):
             continue
+
         valid_attributes.append(attribute)
 
     if valid_attributes:
@@ -290,12 +190,10 @@ def main():
         sys.exit(0)
 
     wazuh_event_param = normalize_value(wazuh_event_param)
-
-    if is_local_allowlisted(wazuh_event_param):
+    if not wazuh_event_param:
         sys.exit(0)
 
     misp_api_response = query_misp(wazuh_event_param)
-
     handle_misp_response(misp_api_response, alert, alert_output)
 
 
