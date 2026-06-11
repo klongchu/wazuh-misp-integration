@@ -7,10 +7,11 @@
 | ไฟล์ | ใช้ทำอะไร |
 |---|---|
 | `install-wazuh-misp-full.sh` | ติดตั้ง/ตั้งค่า Wazuh Manager ฝั่ง Server พร้อม MISP, Telegram, Active Response |
-| `client_wazuh_sysmon_setup.ps1` | ติดตั้ง Wazuh Agent + Sysmon + Windows Active Response ฝั่ง Client แบบไฟล์เดียว |
+| `client_wazuh_sysmon_setup.ps1` | ติดตั้ง Wazuh Agent + Sysmon + Windows Active Response ฝั่ง Windows Client |
+| `client_wazuh_linux_setup.sh` | ติดตั้ง Wazuh Agent + Active Response ฝั่ง Linux Client |
 | `Lab-Wazuh-Guild/` | เอกสาร Lab HTML และรูปประกอบ |
 
-> ใช้งานจริงแนะนำใช้ `install-wazuh-misp-full.sh` และ `client_wazuh_sysmon_setup.ps1` เป็นหลัก
+> ใช้งานจริงแนะนำใช้ `install-wazuh-misp-full.sh`, `client_wazuh_sysmon_setup.ps1`, และ `client_wazuh_linux_setup.sh` เป็นหลัก
 
 ## ลำดับการติดตั้ง
 
@@ -70,6 +71,28 @@ powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
 - เขียนไฟล์ Active Response ลงในเครื่อง client โดยตรง:
   - `C:\Program Files (x86)\ossec-agent\active-response\bin\action-script.bat`
   - `C:\Program Files (x86)\ossec-agent\active-response\bin\block-malicious.ps1`
+- restart Wazuh Agent service
+
+### 3. ติดตั้งฝั่ง Linux Client: Wazuh Agent + Active Response
+
+รันบน Linux Client:
+
+```bash
+sudo bash ./client_wazuh_linux_setup.sh
+```
+
+สคริปต์จะถามค่าเหล่านี้:
+
+- Wazuh Manager IP/FQDN
+- Agent Name
+- Agent Group ค่า default คือ `linux,misp`
+- ต้องการติดตั้ง Active Response สำหรับ block IP หรือไม่
+
+สิ่งที่สคริปต์ทำ:
+
+- ติดตั้ง Wazuh Agent
+- ตั้งค่า Agent config
+- ติดตั้ง Active Response script ฝั่ง Linux manager
 - restart Wazuh Agent service
 
 ## Active Response คืออะไร
@@ -187,4 +210,10 @@ Windows Client:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
+```
+
+Linux Client:
+
+```bash
+sudo bash ./client_wazuh_linux_setup.sh
 ```
