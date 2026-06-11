@@ -238,17 +238,12 @@ else {
 
 Write-Host "[8/10] Restart Wazuh Agent"
 
-$WazuhService = Get-Service -ErrorAction SilentlyContinue |
-Where-Object {
-    ($_.Name -match 'wazuh|ossec') -or
-    ($_.DisplayName -match 'wazuh|ossec')
-} |
-Select-Object -First 1
+$WazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$' } | Select-Object -First 1
 
 if ($null -eq $WazuhService) {
-    Write-Host "[ERROR] Not found Wazuh Agent Service"
+    Write-Host "[ERROR] Wazuh Agent Service not found."
     Write-Host "Run this command to check:"
-    Write-Host "Get-Service | Where-Object { `$_.Name -match 'wazuh|ossec' -or `$_.DisplayName -match 'wazuh|ossec' }"
+    Write-Host "Get-Service | Where-Object { `$_.Name -match '^wazuh-agent$' -or `$_.Name -match '^ossec-agent$' -or `$_.DisplayName -match '^Wazuh Agent$' }"
     exit 1
 }
 
@@ -262,12 +257,7 @@ else {
 }
 
 Write-Host "[9/10] Verify services"
-Get-Service -ErrorAction SilentlyContinue |
-Where-Object {
-    ($_.Name -match 'wazuh|ossec|Sysmon64') -or
-    ($_.DisplayName -match 'wazuh|ossec|Sysmon')
-} |
-Format-Table Name, DisplayName, Status -AutoSize
+Get-Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -or ($_.Name -match 'Sysmon64') -or ($_.DisplayName -match 'Sysmon') } | Format-Table Name, DisplayName, Status -AutoSize
 
 Write-Host "[10/10] Done"
 Write-Host ""
