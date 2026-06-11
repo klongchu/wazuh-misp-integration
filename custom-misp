@@ -1,0 +1,303 @@
+#!/var/ossec/framework/python/bin/python3
+import sys
+import os
+from socket import socket, AF_UNIX, SOCK_DGRAM
+import json
+import ipaddress
+import re
+import requests
+from requests.exceptions import ConnectionError, Timeout, RequestException
+
+# =========================
+# Wazuh queue socket
+# =========================
+pwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+socket_addr = f"{pwd}/queue/sockets/queue"
+
+# =========================
+# MISP configuration
+# =========================
+MISP_BASE_URL = "https://{IP/Domain MISP}/attributes/restSearch/"
+MISP_API_KEY = "API Key"
+
+MISP_HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": MISP_API_KEY,
+    "Accept": "application/json",
+}
+
+# =========================
+# Local allowlist
+# เพิ่ม domain ที่ไม่ต้องการให้แจ้งเตือนซ้ำ
+# =========================
+LOCAL_ALLOW_DOMAINS = [
+    "huggingface.co",
+    "router.huggingface.co",
+    "*.huggingface.co",
+    "telegram.org",
+    "*.telegram.org",
+    "canva.com",
+    "www.canva.com",
+    "*.canva.com",
+    "canvasusercontent.com",
+    "canva-apps.com",
+]
+
+
+def send_event(msg, agent=None):
+    if not agent or agent.get("id") == "000":
+        message = f"1:misp:{json.dumps(msg)}"
+    else:
+        agent_id = agent.get("id", "000")
+        agent_name = agent.get("name", "unknown")
+        agent_ip = agent.get("ip", "any")
+        message = f"1:[{agent_id}] ({agent_name}) {agent_ip}->misp:{json.dumps(msg)}"
+
+    with socket(AF_UNIX, SOCK_DGRAM) as sock:
+        sock.connect(socket_addr)
+        sock.send(message.encode())
+
+
+def extract_event_param(alert):
+    event_source = alert.get("rule", {}).get("groups", [""])[0]
+    groups = alert.get("rule", {}).get("groups", [])
+    event_type = groups[2] if len(groups) > 2 else ""
+
+    regex_file_hash = re.compile(r"\b[A-Fa-f0-9]{64}\b")
+
+    try:
+        if event_source == "windows":
+            if event_type in (
+                "sysmon_event1",
+                "sysmon_event6",
+                "sysmon_event7",
+                "sysmon_event_23",
+                "sysmon_event_24",
+                "sysmon_event_25",
+            ):
+                hashes_str = alert["data"]["win"]["eventdata"]["hashes"]
+                match = regex_file_hash.search(hashes_str)
+                return match.group(0) if match else None
+
+            elif event_type == "sysmon_event_15":
+                hashes_str = alert["data"]["win"]["eventdata"]["hash"]
+                match = regex_file_hash.search(hashes_str)
+                return match.group(0) if match else None
+
+            elif event_type == "sysmon_event3":
+                if alert["data"]["win"]["eventdata"].get("destinationIsIpv6") == "false":
+                    dst_ip = alert["data"]["win"]["eventdata"]["destinationIp"]
+                    if ipaddress.ip_address(dst_ip).is_global:
+                        return dst_ip
+                return None
+
+            elif event_type == "sysmon_event_22":
+                query_name = alert["data"]["win"]["eventdata"].get("queryName")
+                return normalize_value(query_name)
+
+        elif event_source == "linux":
+            if event_type == "sysmon_event3":
+                if alert["data"]["eventdata"].get("destinationIsIpv6") == "false":
+                    dst_ip = alert["data"]["eventdata"]["DestinationIp"]
+                    if ipaddress.ip_address(dst_ip).is_global:
+                        return dst_ip
+                return None
+
+        elif event_source == "ossec" and event_type == "syscheck_entry_added":
+            return alert["syscheck"]["sha256_after"]
+
+    except (KeyError, IndexError, ValueError):
+        return None
+
+    return None
+
+
+def normalize_value(value):
+    if not value:
+        return None
+
+    value = str(value).strip().lower()
+
+    # ตัด dot ท้าย DNS เช่น example.com.
+    value = value.rstrip(".")
+
+    # ตัด http:// หรือ https:// แบบง่าย
+    value = re.sub(r"^https?://", "", value)
+
+    # ถ้าเป็น URL ให้เอาเฉพาะ host
+    value = value.split("/")[0]
+
+    # ตัด port เช่น example.com:443
+    if ":" in value and not re.match(r"^[a-f0-9:]+$", value):
+        value = value.split(":")[0]
+
+    return value
+
+
+def domain_match(value, pattern):
+    value = normalize_value(value)
+    pattern = normalize_value(pattern)
+
+    if not value or not pattern:
+        return False
+
+    if pattern.startswith("*."):
+        base = pattern[2:]
+        return value == base or value.endswith("." + base)
+
+    return value == pattern
+
+
+def is_local_allowlisted(value):
+    for pattern in LOCAL_ALLOW_DOMAINS:
+        if domain_match(value, pattern):
+            return True
+    return False
+
+
+def query_misp(value):
+    payload = {
+        "value": value,
+        "to_ids": 1,
+        "includeWarninglistHits": True,
+        "includeEventTags": True,
+        "includeAttributeTags": True,
+    }
+
+    try:
+        response = requests.post(
+            MISP_BASE_URL,
+            headers=MISP_HEADERS,
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+        return response.json()
+
+    except ConnectionError:
+        return {"error": "Connection Error to MISP API"}
+    except Timeout:
+        return {"error": "Timeout calling MISP API"}
+    except RequestException as e:
+        return {"error": f"MISP API Request Error: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Unknown Error: {str(e)}"}
+
+
+def is_warninglist_hit(attribute):
+    if attribute.get("warninglist_hit") is True:
+        return True
+
+    if attribute.get("warninglist_hits"):
+        return True
+
+    if attribute.get("Warninglist"):
+        return True
+
+    if attribute.get("warnings"):
+        return True
+
+    event = attribute.get("Event", {})
+    if event.get("warninglist_hit") is True:
+        return True
+
+    if event.get("warninglist_hits"):
+        return True
+
+    return False
+
+
+def has_false_positive_tag(attribute):
+    tag_names = []
+
+    for tag in attribute.get("Tag", []):
+        tag_names.append(str(tag.get("name", "")).lower())
+
+    event = attribute.get("Event", {})
+    for tag in event.get("Tag", []):
+        tag_names.append(str(tag.get("name", "")).lower())
+
+    fp_keywords = [
+        "false-positive",
+        "false positive",
+        "whitelist",
+        "allowlist",
+        "trusted",
+        "known-good",
+        "known good",
+    ]
+
+    return any(keyword in tag for tag in tag_names for keyword in fp_keywords)
+
+
+def should_ignore_attribute(attribute):
+    value = attribute.get("value", "")
+
+    if is_local_allowlisted(value):
+        return True
+
+    if is_warninglist_hit(attribute):
+        return True
+
+    if has_false_positive_tag(attribute):
+        return True
+
+    return False
+
+
+def handle_misp_response(misp_api_response, alert, alert_output):
+    if "error" in misp_api_response:
+        alert_output["misp"] = {}
+        alert_output["integration"] = "misp"
+        alert_output["misp"]["error"] = misp_api_response["error"]
+        send_event(alert_output, alert.get("agent"))
+        return
+
+    attributes = misp_api_response.get("response", {}).get("Attribute", [])
+
+    valid_attributes = []
+    for attribute in attributes:
+        if should_ignore_attribute(attribute):
+            continue
+        valid_attributes.append(attribute)
+
+    if valid_attributes:
+        attribute = valid_attributes[0]
+
+        alert_output["misp"] = {}
+        alert_output["integration"] = "misp"
+        alert_output["misp"]["source"] = {}
+        alert_output["misp"]["event_id"] = attribute.get("event_id", "")
+        alert_output["misp"]["category"] = attribute.get("category", "")
+        alert_output["misp"]["value"] = attribute.get("value", "")
+        alert_output["misp"]["type"] = attribute.get("type", "")
+        alert_output["misp"]["source"]["description"] = alert.get("rule", {}).get("description", "")
+
+        send_event(alert_output, alert.get("agent"))
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit("Usage: custom-misp.py <alert_file.json>")
+
+    with open(sys.argv[1]) as f:
+        alert = json.load(f)
+
+    alert_output = {}
+
+    wazuh_event_param = extract_event_param(alert)
+    if not wazuh_event_param:
+        sys.exit(0)
+
+    wazuh_event_param = normalize_value(wazuh_event_param)
+
+    if is_local_allowlisted(wazuh_event_param):
+        sys.exit(0)
+
+    misp_api_response = query_misp(wazuh_event_param)
+
+    handle_misp_response(misp_api_response, alert, alert_output)
+
+
+if __name__ == "__main__":
+    main()
