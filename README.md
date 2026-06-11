@@ -116,6 +116,7 @@ powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
 - Agent Name
 - Agent Group ค่า default คือ `windows,sysmon,misp`
 - ต้องการติดตั้ง Active Response สำหรับ block IP หรือไม่
+- ถ้ามี Wazuh Agent ติดตั้งอยู่แล้ว: `reinstall` (ติดตั้งทับ) หรือ `uninstall` (ลบก่อนแล้วติดตั้งใหม่) ค่า default คือ `reinstall`
 
 สิ่งที่สคริปต์ทำ:
 

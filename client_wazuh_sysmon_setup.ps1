@@ -22,6 +22,7 @@ $WazuhManager = Read-Host "Wazuh Manager IP/FQDN"
 $AgentName = Read-Host "Agent Name [Enter = ComputerName]"
 $AgentGroup = Read-Host "Agent Group [Enter = windows,sysmon,misp]"
 $InstallActiveResponse = Read-Host "Install Active Response for IP blocking? [Y/n]"
+$ReinstallMode = Read-Host "If Wazuh Agent already exists: reinstall in-place or uninstall first? [reinstall/uninstall, default=reinstall]"
 
 if ([string]::IsNullOrWhiteSpace($AgentName)) {
     $AgentName = $env:COMPUTERNAME
@@ -33,6 +34,10 @@ if ([string]::IsNullOrWhiteSpace($AgentGroup)) {
 
 if ([string]::IsNullOrWhiteSpace($InstallActiveResponse)) {
     $InstallActiveResponse = "Y"
+}
+
+if ([string]::IsNullOrWhiteSpace($ReinstallMode)) {
+    $ReinstallMode = "reinstall"
 }
 
 if ([string]::IsNullOrWhiteSpace($WazuhManager)) {
@@ -63,7 +68,42 @@ New-Item -ItemType Directory -Force -Path $SysmonDir | Out-Null
 Write-Host "[1/10] Download Wazuh Agent"
 Invoke-WebRequest -Uri $WazuhUrl -OutFile $WazuhMsi
 
-Write-Host "[2/10] Install/Update Wazuh Agent"
+$ExistingWazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$'
+} | Select-Object -First 1
+
+if ($null -ne $ExistingWazuhService) {
+    Write-Host "[INFO] Existing Wazuh Agent detected: $($ExistingWazuhService.Name) / $($ExistingWazuhService.DisplayName)"
+
+    if ($ReinstallMode -match '^(uninstall|remove)$') {
+        Write-Host "[2/10] Uninstall old Wazuh Agent"
+        if ($ExistingWazuhService.Status -eq 'Running') {
+            Stop-Service -Name $ExistingWazuhService.Name -Force -ErrorAction SilentlyContinue
+        }
+
+        $UninstallProcess = Start-Process msiexec.exe -Wait -NoNewWindow -PassThru -ArgumentList @(
+            "/x `"$WazuhMsi`"",
+            "/qn",
+            "/L*v `"$WazuhMsiLog`""
+        )
+
+        if ($UninstallProcess.ExitCode -ne 0 -and $UninstallProcess.ExitCode -ne 3010) {
+            Write-Host "[ERROR] Wazuh Agent uninstall failed. ExitCode: $($UninstallProcess.ExitCode)"
+            Write-Host "MSI log: $WazuhMsiLog"
+            exit 1
+        }
+
+        Start-Sleep -Seconds 10
+    }
+    else {
+        Write-Host "[2/10] Existing Wazuh Agent found. Continue with reinstall in-place"
+    }
+}
+else {
+    Write-Host "[2/10] No existing Wazuh Agent found. Continue with fresh install"
+}
+
+Write-Host "[3/10] Install/Update Wazuh Agent"
 $MsiProcess = Start-Process msiexec.exe -Wait -NoNewWindow -PassThru -ArgumentList @(
     "/i `"$WazuhMsi`"",
     "/qn",
@@ -85,13 +125,13 @@ if ($MsiProcess.ExitCode -eq 3010) {
 
 Start-Sleep -Seconds 10
 
-Write-Host "[3/10] Download Sysmon"
+Write-Host "[4/10] Download Sysmon"
 Invoke-WebRequest -Uri $SysmonUrl -OutFile $SysmonExe
 
-Write-Host "[4/10] Download Sysmon Config"
+Write-Host "[5/10] Download Sysmon Config"
 Invoke-WebRequest -Uri $ConfigUrl -OutFile $SysmonConfig
 
-Write-Host "[5/10] Install/Update Sysmon"
+Write-Host "[6/10] Install/Update Sysmon"
 try {
     if (Get-Service Sysmon64 -ErrorAction SilentlyContinue) {
         & $SysmonExe -accepteula -c $SysmonConfig
@@ -105,7 +145,7 @@ catch {
     Write-Host "[WARNING] Continue if Sysmon service exists and config validates."
 }
 
-Write-Host "[6/10] Add Sysmon EventChannel to Wazuh Agent"
+Write-Host "[7/10] Add Sysmon EventChannel to Wazuh Agent"
 if (!(Test-Path $WazuhConf)) {
     Write-Host "[ERROR] ไม่พบ $WazuhConf"
     exit 1
@@ -127,7 +167,7 @@ if ($Content -notmatch "Microsoft-Windows-Sysmon/Operational") {
 }
 
 if ($InstallActiveResponse -match '^[Yy]$') {
-    Write-Host "[7/10] Install Active Response files"
+    Write-Host "[8/10] Install Active Response files"
     New-Item -ItemType Directory -Path $ActiveResponseBinPath -Force | Out-Null
 
     $ActionScriptContent = @'
@@ -251,10 +291,10 @@ exit 0
     Unblock-File -Path $DestBlockScript -ErrorAction SilentlyContinue
 }
 else {
-    Write-Host "[7/10] Skip Active Response files"
+    Write-Host "[8/10] Skip Active Response files"
 }
 
-Write-Host "[8/10] Restart Wazuh Agent"
+Write-Host "[9/10] Restart Wazuh Agent"
 
 $WazuhService = $null
 for ($i = 1; $i -le 12; $i++) {
@@ -301,10 +341,10 @@ if ($null -eq $WazuhService -or $WazuhService.Status -ne 'Running') {
     exit 1
 }
 
-Write-Host "[9/10] Verify services"
+Write-Host "[10/10] Verify services"
 Get-Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -or ($_.Name -match 'Sysmon64') -or ($_.DisplayName -match 'Sysmon') } | Format-Table Name, DisplayName, Status -AutoSize
 
-Write-Host "[10/10] Done"
+Write-Host "[DONE] Installation completed"
 Write-Host ""
 Write-Host "Wazuh MSI log         : $WazuhMsiLog"
 Write-Host "Wazuh config          : $WazuhConf"
