@@ -13,7 +13,23 @@
 
 > ใช้งานจริงแนะนำใช้ `install-wazuh-misp-full.sh`, `client_wazuh_sysmon_setup.ps1`, และ `client_wazuh_linux_setup.sh` เป็นหลัก
 
+## ข้อกำหนดก่อนติดตั้ง
+
+### Server / Linux Client
+
+- ต้องมี `bash`, `curl`, `sudo`
+- Linux ฝั่ง client script นี้ออกแบบมาสำหรับ Debian/Ubuntu ที่มี `apt`
+- ถ้าจะใช้ Active Response ฝั่ง Linux ต้องมี `iptables`
+
+### Windows Client
+
+- ต้องรัน PowerShell แบบ `Run as Administrator`
+- ต้องใช้งาน `msiexec.exe` และ `Invoke-WebRequest` ได้
+- ต้องดาวน์โหลดไฟล์จาก internet ได้
+
 ## ติดตั้งแบบเร็ว
+
+> คำสั่ง one-line แบบ `curl | bash` และ `irm | iex` ควรใช้เฉพาะกรณีที่เชื่อถือ source และตรวจสอบ script แล้วเท่านั้น
 
 ### Server (Ubuntu)
 
@@ -26,6 +42,8 @@ curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/mai
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1 | iex"
 ```
+
+> สำหรับ production แนะนำให้ดาวน์โหลดไฟล์ `.ps1` มาก่อน แล้วรันจากไฟล์ local แทน `irm | iex`
 
 ### Linux Client
 
@@ -134,6 +152,8 @@ sudo tail -f /var/ossec/logs/active-responses.log
 sudo iptables -S | grep wazuh-misp-block
 ```
 
+> หมายเหตุ: ถ้าเครื่องใช้ `nftables` เป็นหลัก อาจต้องตรวจสอบ rule ผ่าน tooling ของระบบเพิ่มเติม ไม่ใช่ดูผ่าน `iptables` อย่างเดียว
+
 ## Active Response คืออะไร
 
 Active Response คือกลไกที่ให้ Wazuh สั่ง endpoint ทำ action อัตโนมัติเมื่อเจอ alert ที่ตรง rule
@@ -236,13 +256,14 @@ Remove-NetFirewallRule -DisplayName $ruleName
 - หากเคยติดตั้ง Wazuh Agent มาก่อน สคริปต์จะ install/update ทับผ่าน MSI
 - หาก Active Response ไม่ทำงาน ให้เช็ค config ฝั่ง Wazuh Manager ใน `ossec.conf`
 - ไฟล์แยก `action-script.bat` และ `block-malicious.ps1` ไม่มีแล้ว; รวมเข้า `client_wazuh_sysmon_setup.ps1` แล้ว
-- หากต้องการ unblock IP ที่ถูก block ไปแล้ว ให้รันคำสั่ง PowerShell นี้บน Windows Client:
+- คำสั่ง one-line ควรใช้เฉพาะกรณีที่ตรวจสอบ script แล้วและเชื่อถือ source
+- Linux client script นี้อิง `apt` และ `iptables`; ถ้าใช้ distro/firewall backend อื่น อาจต้องปรับ script เพิ่ม
+- หากต้องการ unblock IP ที่ถูก block ไปแล้ว ให้ลบ firewall rule เดิมออกก่อน แล้วค่อยสร้าง allow rule ถ้าจำเป็น
+- ตัวอย่างบน Windows Client:
   ```powershell
-  # Example: Unblock IP 192.168.1.100
   $Ioc = "192.168.1.100"
-  $RuleName = "Wazuh MISP Block $Ioc"
-  Get-NetFirewallRule -DisplayName $RuleName | Remove-NetFirewallRule
-  New-NetFirewallRule -DisplayName "$RuleName Inbound" -Direction Inbound -RemoteAddress $Ioc -Action Allow -Profile Any -Enabled True
-  New-NetFirewallRule -DisplayName "$RuleName Outbound" -Direction Outbound -RemoteAddress $Ioc -Action Allow -Profile Any -Enabled True
+  $RuleBase = "Wazuh MISP Block $Ioc"
+  Get-NetFirewallRule -DisplayName $RuleBase -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+  Get-NetFirewallRule -DisplayName "$RuleBase Inbound" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
   ```
 
