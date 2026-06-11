@@ -290,42 +290,120 @@ EOF
 
 cat > "$TELEGRAM_PY_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
-import sys, json, requests
+import sys
+import json
+import html
+import requests
 
-TELEGRAM_TOKEN = "${TELEGRAM_TOKEN}"
-TELEGRAM_CHAT_ID = "${TELEGRAM_CHAT_ID}"
+BOT_TOKEN = "${TELEGRAM_TOKEN}"
+CHAT_ID = "${TELEGRAM_CHAT_ID}"
 
-def send(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML"
-    }, timeout=10)
 
-alert_file = sys.argv[1]
-with open(alert_file, "r", encoding="utf-8") as f:
-    alert = json.load(f)
+def value(data, path, default="-"):
+    current = data
 
-rule = alert.get("rule", {})
-agent = alert.get("agent", {})
-data = alert.get("data", {})
+    for key in path.split("."):
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
 
-msg = f"""
-🚨 <b>Wazuh MISP IOC Alert</b>
+    return current if current not in [None, ""] else default
 
-<b>Level:</b> {rule.get("level")}
-<b>Rule:</b> {rule.get("id")} - {rule.get("description")}
-<b>Agent:</b> {agent.get("name", "-")} / {agent.get("ip", "-")}
 
-<b>IOC:</b> {data.get("misp", {}).get("value", "-")}
-<b>Type:</b> {data.get("misp", {}).get("type", "-")}
-<b>Category:</b> {data.get("misp", {}).get("category", "-")}
+def get_misp(alert, key, default="-"):
+    """
+    รองรับทั้ง:
+    misp.value
+    data.misp.value
+    """
+    v = value(alert, f"misp.{key}", default)
+    if v != default:
+        return v
+
+    v = value(alert, f"data.misp.{key}", default)
+    if v != default:
+        return v
+
+    return default
+
+
+def esc(text):
+    return html.escape(str(text))
+
+
+try:
+    alert_file = sys.argv[1]
+
+    with open(alert_file, "r", encoding="utf-8") as f:
+        alert = json.load(f)
+
+    rule_id = value(alert, "rule.id")
+    level = value(alert, "rule.level")
+    description = value(alert, "rule.description")
+
+    agent_name = value(alert, "agent.name")
+    agent_ip = value(alert, "agent.ip")
+    location = value(alert, "location")
+
+    misp_category = get_misp(alert, "category")
+    misp_type = get_misp(alert, "type")
+    misp_value = get_misp(alert, "value")
+    misp_event_id = get_misp(alert, "event_id")
+
+    try:
+        level_int = int(level)
+
+        if level_int >= 15:
+            icon = "🔴"
+        elif level_int >= 10:
+            icon = "🟠"
+        elif level_int >= 7:
+            icon = "🟡"
+        else:
+            icon = "🔵"
+
+    except Exception:
+        icon = "🚨"
+
+    full_log = esc(str(alert.get("full_log", "-")))[:1000]
+
+    message = f"""
+{icon} <b>Wazuh MISP Alert</b>
+
+<b>Rule ID:</b> {esc(rule_id)}
+<b>Level:</b> {esc(level)}
+<b>Description:</b> {esc(description)}
+
+<b>Agent:</b> {esc(agent_name)}
+<b>IP:</b> {esc(agent_ip)}
+<b>Location:</b> {esc(location)}
+
+<b>MISP Category:</b> {esc(misp_category)}
+<b>MISP Type:</b> {esc(misp_type)}
+<b>IOC:</b> {esc(misp_value)}
+<b>MISP Event ID:</b> {esc(misp_event_id)}
 
 <b>Full Log:</b>
-{alert.get("full_log", "-")[:1500]}
+<pre>{full_log}</pre>
 """
-send(msg)
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+
+    response = requests.post(url, json=payload, timeout=10)
+
+    if response.status_code != 200:
+        print(f"Telegram API Error: {response.status_code} {response.text}")
+
+except Exception as e:
+    print(f"Telegram integration error: {e}")
 EOF
 
 chmod 750 "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
