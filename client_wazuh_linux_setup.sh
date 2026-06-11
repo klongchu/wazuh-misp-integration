@@ -135,21 +135,32 @@ else
 fi
 
 # 4. Restart Wazuh Agent
-echo "[4/5] Restarting Wazuh Agent"
+    echo "[4/6] Restarting Wazuh Agent"
 systemctl daemon-reload
 systemctl enable wazuh-agent
 systemctl restart wazuh-agent
 
 # 5. Verify services
-echo "[5/5] Verifying services"
+echo "[5/6] Verifying services"
 systemctl status wazuh-agent --no-pager
+
+# 6. Check Active Response log
+if [ "$INSTALL_ACTIVE_RESPONSE" = "Y" ] || [ "$INSTALL_ACTIVE_RESPONSE" = "y" ]; then
+    echo "[6/6] Checking Active Response log"
+    AR_LOG_FILE="/var/ossec/logs/active-responses.log"
+    if [ -f "$AR_LOG_FILE" ]; then
+        echo "Active Response log: $AR_LOG_FILE"
+    else
+        echo "[WARNING] Active Response log not found at $AR_LOG_FILE"
+    fi
+fi
 
 echo ""
 echo "DONE"
 echo "Wazuh Agent config: $WAZUH_AGENT_CONF"
-if [[ "$INSTALL_ACTIVE_RESPONSE" =~ ^[Yy]$ ]]; then
+if [ "$INSTALL_ACTIVE_RESPONSE" = "Y" ] || [ "$INSTALL_ACTIVE_RESPONSE" = "y" ]; then
     echo "Active Response script: $AR_BIN_PATH/block-malicious.sh"
-    echo "Active Response log: $LOG_FILE"
+    echo "Active Response log: $AR_LOG_FILE"
 fi
 echo ""
-echo "Installation complete. Please check the Wazuh Agent status."
+echo "Installation complete. Please check the Wazuh Agent status and logs."

@@ -92,8 +92,17 @@ sudo bash ./client_wazuh_linux_setup.sh
 
 - ติดตั้ง Wazuh Agent
 - ตั้งค่า Agent config
-- ติดตั้ง Active Response script ฝั่ง Linux manager
+- ติดตั้ง Active Response script ฝั่ง Linux client
 - restart Wazuh Agent service
+- ตรวจสอบ service และ active-response log
+
+## ตรวจสอบ Linux Client หลังติดตั้ง
+
+```bash
+sudo systemctl status wazuh-agent --no-pager
+sudo tail -f /var/ossec/logs/ossec.log
+sudo tail -f /var/ossec/logs/active-responses.log
+```
 
 ## Active Response คืออะไร
 
