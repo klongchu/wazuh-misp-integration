@@ -13,6 +13,26 @@
 
 > ใช้งานจริงแนะนำใช้ `install-wazuh-misp-full.sh`, `client_wazuh_sysmon_setup.ps1`, และ `client_wazuh_linux_setup.sh` เป็นหลัก
 
+## ติดตั้งแบบเร็ว
+
+### Server (Ubuntu)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/install-wazuh-misp-full.sh | sudo bash
+```
+
+### Windows Client (PowerShell Run as Administrator)
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1 | iex"
+```
+
+### Linux Client
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_linux_setup.sh | sudo bash
+```
+
 ## ลำดับการติดตั้ง
 
 ### 1. ติดตั้งฝั่ง Server: Wazuh Manager + MISP + Telegram
@@ -217,22 +237,3 @@ Remove-NetFirewallRule -DisplayName $ruleName
 - หาก Active Response ไม่ทำงาน ให้เช็ค config ฝั่ง Wazuh Manager ใน `ossec.conf`
 - ไฟล์แยก `action-script.bat` และ `block-malicious.ps1` ไม่มีแล้ว; รวมเข้า `client_wazuh_sysmon_setup.ps1` แล้ว
 
-## สรุปคำสั่งที่ใช้บ่อย
-
-Server:
-
-```bash
-sudo bash install-wazuh-misp-full.sh
-```
-
-Windows Client:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
-```
-
-Linux Client:
-
-```bash
-sudo bash ./client_wazuh_linux_setup.sh
-```
