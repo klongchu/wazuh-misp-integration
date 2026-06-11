@@ -276,11 +276,29 @@ if ($null -eq $WazuhService) {
 
 Write-Host ("[OK] Found Wazuh Service: {0} / {1}" -f $WazuhService.Name, $WazuhService.DisplayName)
 
-if ($WazuhService.Status -eq 'Running') {
-    Restart-Service -Name $WazuhService.Name -Force
+try {
+    if ($WazuhService.Status -eq 'Running') {
+        Restart-Service -Name $WazuhService.Name -Force -ErrorAction Stop
+    }
+    else {
+        Start-Service -Name $WazuhService.Name -ErrorAction Stop
+    }
 }
-else {
-    Start-Service -Name $WazuhService.Name
+catch {
+    Write-Host "[ERROR] Cannot start Wazuh service: $($WazuhService.Name)"
+    Write-Host "[ERROR] Message: $($_.Exception.Message)"
+    Write-Host "[INFO] Check Wazuh log: C:\Program Files (x86)\ossec-agent\ossec.log"
+    Write-Host "[INFO] Check MSI log: $WazuhMsiLog"
+    exit 1
+}
+
+Start-Sleep -Seconds 5
+$WazuhService = Get-Service -Name $WazuhService.Name -ErrorAction SilentlyContinue
+if ($null -eq $WazuhService -or $WazuhService.Status -ne 'Running') {
+    Write-Host "[ERROR] Wazuh service still not running after start attempt: $($WazuhService.Name)"
+    Write-Host "[INFO] Check Wazuh log: C:\Program Files (x86)\ossec-agent\ossec.log"
+    Write-Host "[INFO] Check MSI log: $WazuhMsiLog"
+    exit 1
 }
 
 Write-Host "[9/10] Verify services"

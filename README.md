@@ -241,7 +241,12 @@ C:\Program Files (x86)\ossec-agent\ossec.log
 %TEMP%\wazuh_sysmon\wazuh-agent-install.log
 ```
 
-ถ้า script ขึ้น `Wazuh Agent Service not found` ให้เปิดดู MSI log ที่ `%TEMP%\wazuh_sysmon\wazuh-agent-install.log`
+ถ้า script ขึ้น `Wazuh Agent Service not found` หรือ service start ไม่ได้ ให้เปิดดู:
+
+```text
+%TEMP%\wazuh_sysmon\wazuh-agent-install.log
+C:\Program Files (x86)\ossec-agent\ossec.log
+```
 
 ### Wazuh Manager
 
