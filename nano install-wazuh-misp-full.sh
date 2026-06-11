@@ -6,17 +6,6 @@ set -e
 # For Wazuh Manager Ubuntu
 # ======================================================
 
-# ====== แก้ค่าตรงนี้ ======
-MISP_URL="https://192.168.75.138"
-MISP_API_KEY="PUT_MISP_API_KEY_HERE"
-
-TELEGRAM_TOKEN="PUT_TELEGRAM_BOT_TOKEN_HERE"
-TELEGRAM_CHAT_ID="PUT_TELEGRAM_CHAT_ID_HERE"
-
-ENABLE_ACTIVE_RESPONSE="yes"   # yes/no
-ACTIVE_RESPONSE_TIMEOUT="600"
-# ===========================
-
 OSSEC_DIR="/var/ossec"
 OSSEC_CONF="$OSSEC_DIR/etc/ossec.conf"
 RULE_DIR="$OSSEC_DIR/etc/rules"
@@ -30,10 +19,55 @@ BACKUP_DIR="/root/wazuh-misp-backup-$(date +%F-%H%M%S)"
 echo "=============================================="
 echo " Wazuh + MISP Full IOC Detection Installer"
 echo "=============================================="
+echo ""
+
+read -p "เตรียมเครื่องตาม Lab HTML แล้วหรือยัง? [y/N]: " PREP_DONE
+read -p "ตั้ง hostname เป็น wazuh-server อัตโนมัติไหม? [y/N]: " SET_HOSTNAME
+read -p "MISP URL เช่น https://misp.domain.local: " MISP_URL
+read -p "MISP API/Auth Key: " MISP_API_KEY
+read -p "Telegram Bot Token: " TELEGRAM_TOKEN
+read -p "Telegram Chat ID: " TELEGRAM_CHAT_ID
+read -p "Enable Active Response? [yes/no] (default: yes): " ENABLE_ACTIVE_RESPONSE
+read -p "Active Response Timeout (default: 600): " ACTIVE_RESPONSE_TIMEOUT
+
+echo ""
+
+MISP_URL="${MISP_URL%/}"
+ENABLE_ACTIVE_RESPONSE="${ENABLE_ACTIVE_RESPONSE:-yes}"
+ACTIVE_RESPONSE_TIMEOUT="${ACTIVE_RESPONSE_TIMEOUT:-600}"
+
+if [ -z "$MISP_URL" ] || [ -z "$MISP_API_KEY" ] || [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+  echo "[ERROR] MISP URL, API Key, Telegram Token, Telegram Chat ID ห้ามว่าง"
+  exit 1
+fi
 
 if [ "$EUID" -ne 0 ]; then
   echo "[ERROR] กรุณารันด้วย sudo หรือ root"
   exit 1
+fi
+
+if [[ ! "$PREP_DONE" =~ ^[Yy]$ ]]; then
+  echo "[INFO] Run lab prep steps"
+  systemd-machine-id-setup || true
+  dbus-uuidgen --ensure || true
+  systemctl restart systemd-networkd || true
+fi
+
+if [[ "$SET_HOSTNAME" =~ ^[Yy]$ ]]; then
+  hostnamectl set-hostname wazuh-server
+  if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
+    sed -i 's/^127\.0\.1\.1[[:space:]].*/127.0.1.1 wazuh-server/' /etc/hosts
+  else
+    echo '127.0.1.1 wazuh-server' >> /etc/hosts
+  fi
+fi
+
+if [ -f "$INTEGRATION_DIR/custom-misp" ] || [ -f "$RULE_DIR/misp.xml" ]; then
+  read -p "พบการติดตั้ง Wazuh MISP Integration แล้ว ต้องการติดตั้งทับหรือไม่? [y/N]: " OVERWRITE_INSTALL
+  if [[ ! "$OVERWRITE_INSTALL" =~ ^[Yy]$ ]]; then
+    echo "[INFO] ยกเลิกการติดตั้ง"
+    exit 0
+  fi
 fi
 
 if [ ! -d "$OSSEC_DIR" ]; then
@@ -140,7 +174,7 @@ if ! grep -q "<name>custom-misp</name>" "$OSSEC_CONF"; then
   sed -i '/<\/ossec_config>/i\
   <integration>\
     <name>custom-misp</name>\
-    <group>sysmon_event1,sysmon_event3,sysmon_event6,sysmon_event7,sysmon_event22,web,syscheck,</group>\
+    <group>sysmon_event_1,sysmon_event_3,sysmon_event_6,sysmon_event_7,sysmon_event_22,web,syscheck,</group>
     <alert_format>json</alert_format>\
   </integration>' "$OSSEC_CONF"
 fi
@@ -311,7 +345,42 @@ if ($ioc -match '^\d{1,3}(\.\d{1,3}){3}$') {
 }
 EOF
 
-echo "[10/10] Validate and restart Wazuh"
+echo "[10/10] Verify/Create Sysmon Event ID 22 rule"
+LOCAL_RULES="$RULE_DIR/local_rules.xml"
+
+if grep -R "sysmon_event_22" /var/ossec/ruleset/rules/ "$RULE_DIR" >/dev/null 2>&1; then
+  echo "[OK] Sysmon Event ID 22 rule already exists"
+else
+  echo "[INFO] Missing sysmon_event_22 rule. Adding Rule ID 61650 to local_rules.xml"
+
+  if [ ! -f "$LOCAL_RULES" ]; then
+cat > "$LOCAL_RULES" <<'EOF'
+<group name="local,syslog,sshd,">
+</group>
+EOF
+  fi
+
+  cp "$LOCAL_RULES" "$BACKUP_DIR/local_rules.xml.bak"
+
+  if grep -q 'id="61650"' "$LOCAL_RULES"; then
+    echo "[SKIP] Rule ID 61650 already exists in local_rules.xml"
+  else
+    sed -i '/<\/group>/i\
+  <rule id="61650" level="8" overwrite="yes">\
+    <if_sid>61600</if_sid>\
+    <field name="win.system.eventID">^22$</field>\
+    <description>Sysmon - Event ID 22: DNSEvent (DNS query)</description>\
+    <options>no_full_log</options>\
+    <group>sysmon_event_22,</group>\
+  </rule>' "$LOCAL_RULES"
+
+    chown root:wazuh "$LOCAL_RULES"
+    chmod 640 "$LOCAL_RULES"
+    echo "[OK] Added Rule ID 61650"
+  fi
+fi
+
+echo "[11/11] Validate and restart Wazuh"
 "$OSSEC_DIR/bin/wazuh-analysisd" -t || {
   echo "[ERROR] Wazuh config test failed"
   echo "Backup อยู่ที่ $BACKUP_DIR"
