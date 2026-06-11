@@ -42,6 +42,7 @@ if ([string]::IsNullOrWhiteSpace($WazuhManager)) {
 
 $TempDir = "$env:TEMP\wazuh_sysmon"
 $WazuhMsi = "$TempDir\wazuh-agent.msi"
+$WazuhMsiLog = "$TempDir\wazuh-agent-install.log"
 $WazuhAgentPath = "C:\Program Files (x86)\ossec-agent"
 $WazuhConf = Join-Path $WazuhAgentPath "ossec.conf"
 $ActiveResponseBinPath = Join-Path $WazuhAgentPath "active-response\bin"
@@ -63,15 +64,26 @@ Write-Host "[1/10] Download Wazuh Agent"
 Invoke-WebRequest -Uri $WazuhUrl -OutFile $WazuhMsi
 
 Write-Host "[2/10] Install/Update Wazuh Agent"
-Start-Process msiexec.exe -Wait -NoNewWindow -ArgumentList @(
+$MsiProcess = Start-Process msiexec.exe -Wait -NoNewWindow -PassThru -ArgumentList @(
     "/i `"$WazuhMsi`"",
-    "/q",
+    "/qn",
+    "/L*v `"$WazuhMsiLog`"",
     "WAZUH_MANAGER=`"$WazuhManager`"",
     "WAZUH_AGENT_NAME=`"$AgentName`"",
     "WAZUH_AGENT_GROUP=`"$AgentGroup`""
 )
 
-Start-Sleep -Seconds 5
+if ($MsiProcess.ExitCode -ne 0 -and $MsiProcess.ExitCode -ne 3010) {
+    Write-Host "[ERROR] Wazuh Agent MSI install failed. ExitCode: $($MsiProcess.ExitCode)"
+    Write-Host "MSI log: $WazuhMsiLog"
+    exit 1
+}
+
+if ($MsiProcess.ExitCode -eq 3010) {
+    Write-Host "[WARNING] Wazuh Agent MSI requested reboot. Continue, but reboot may be required."
+}
+
+Start-Sleep -Seconds 10
 
 Write-Host "[3/10] Download Sysmon"
 Invoke-WebRequest -Uri $SysmonUrl -OutFile $SysmonExe
@@ -80,11 +92,17 @@ Write-Host "[4/10] Download Sysmon Config"
 Invoke-WebRequest -Uri $ConfigUrl -OutFile $SysmonConfig
 
 Write-Host "[5/10] Install/Update Sysmon"
-if (Get-Service Sysmon64 -ErrorAction SilentlyContinue) {
-    & $SysmonExe -accepteula -c $SysmonConfig
+try {
+    if (Get-Service Sysmon64 -ErrorAction SilentlyContinue) {
+        & $SysmonExe -accepteula -c $SysmonConfig
+    }
+    else {
+        & $SysmonExe -accepteula -i $SysmonConfig
+    }
 }
-else {
-    & $SysmonExe -accepteula -i $SysmonConfig
+catch {
+    Write-Host "[WARNING] Sysmon command returned warning/error: $($_.Exception.Message)"
+    Write-Host "[WARNING] Continue if Sysmon service exists and config validates."
 }
 
 Write-Host "[6/10] Add Sysmon EventChannel to Wazuh Agent"
@@ -195,13 +213,13 @@ if (-not (Test-IPv4 -Value $Ioc)) {
 $RuleName = "$RuleGroupPrefix $Ioc"
 
 if ($Action -eq "delete") {
-    Get-NetFirewallRule -DisplayName $RuleName | Remove-NetFirewallRule
-    Get-NetFirewallRule -DisplayName "$RuleName Inbound" | Remove-NetFirewallRule
+    Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    Get-NetFirewallRule -DisplayName "$RuleName Inbound" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Write-ArLog "Unblocked MISP IOC IP: $Ioc"
     exit 0
 }
 
-$existingRule = Get-NetFirewallRule -DisplayName $RuleName
+$existingRule = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
 if (-not $existingRule) {
     New-NetFirewallRule `
         -DisplayName $RuleName `
@@ -238,12 +256,21 @@ else {
 
 Write-Host "[8/10] Restart Wazuh Agent"
 
-$WazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$' } | Select-Object -First 1
+$WazuhService = $null
+for ($i = 1; $i -le 12; $i++) {
+    $WazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$' } | Select-Object -First 1
+    if ($null -ne $WazuhService) {
+        break
+    }
+    Write-Host "[INFO] Waiting for Wazuh Agent service... ($i/12)"
+    Start-Sleep -Seconds 5
+}
 
 if ($null -eq $WazuhService) {
     Write-Host "[ERROR] Wazuh Agent Service not found."
+    Write-Host "MSI log: $WazuhMsiLog"
     Write-Host "Run this command to check:"
-    Write-Host "Get-Service | Where-Object { `$_.Name -match '^wazuh-agent$' -or `$_.Name -match '^ossec-agent$' -or `$_.DisplayName -match '^Wazuh Agent$' }"
+    Write-Host "Get-Service | Where-Object { `$_.Name -match '^WazuhSvc$|^wazuh-agent$|^ossec-agent$' -or `$_.DisplayName -match '^Wazuh Agent$' }"
     exit 1
 }
 
@@ -257,10 +284,11 @@ else {
 }
 
 Write-Host "[9/10] Verify services"
-Get-Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -or ($_.Name -match 'Sysmon64') -or ($_.DisplayName -match 'Sysmon') } | Format-Table Name, DisplayName, Status -AutoSize
+Get-Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -or ($_.Name -match 'Sysmon64') -or ($_.DisplayName -match 'Sysmon') } | Format-Table Name, DisplayName, Status -AutoSize
 
 Write-Host "[10/10] Done"
 Write-Host ""
+Write-Host "Wazuh MSI log         : $WazuhMsiLog"
 Write-Host "Wazuh config          : $WazuhConf"
 Write-Host "Sysmon config         : $SysmonConfig"
 if ($InstallActiveResponse -match '^[Yy]$') {

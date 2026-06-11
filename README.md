@@ -201,12 +201,12 @@ C:\Program Files (x86)\ossec-agent\active-response\active-response.log
 ## ตรวจสอบ Service บน Windows
 
 ```powershell
-Get-Service | Where-Object { $_.Name -match '^wazuh-agent$|^ossec-agent$|Sysmon64' -or $_.DisplayName -match '^Wazuh Agent$|Sysmon' }
+Get-Service | Where-Object { $_.Name -match '^WazuhSvc$|^wazuh-agent$|^ossec-agent$|Sysmon64' -or $_.DisplayName -match '^Wazuh Agent$|Sysmon' }
 ```
 
 ควรเห็น service ของ Wazuh Agent และ Sysmon ทำงานอยู่
 
-> ถ้าติดตั้งสำเร็จ service มักชื่อ `wazuh-agent` หรือ `ossec-agent` ไม่ใช่แค่ชื่อมีคำว่า `wazuh` เฉยๆ
+> ถ้าติดตั้งสำเร็จ service อาจชื่อ `WazuhSvc`, `wazuh-agent`, หรือ `ossec-agent` แล้วแต่ Wazuh Agent version
 
 ## ตรวจสอบ Sysmon EventChannel ใน Wazuh Agent
 
@@ -238,7 +238,10 @@ Get-NetFirewallRule -DisplayName "Wazuh MISP Block *" | Format-Table DisplayName
 ```text
 C:\Program Files (x86)\ossec-agent\active-response\active-response.log
 C:\Program Files (x86)\ossec-agent\ossec.log
+%TEMP%\wazuh_sysmon\wazuh-agent-install.log
 ```
+
+ถ้า script ขึ้น `Wazuh Agent Service not found` ให้เปิดดู MSI log ที่ `%TEMP%\wazuh_sysmon\wazuh-agent-install.log`
 
 ### Wazuh Manager
 
