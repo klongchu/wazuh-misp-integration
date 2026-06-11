@@ -96,12 +96,22 @@ sudo bash ./client_wazuh_linux_setup.sh
 - restart Wazuh Agent service
 - ตรวจสอบ service และ active-response log
 
+## ไฟล์ Active Response บน Linux Client
+
+หลังรัน `client_wazuh_linux_setup.sh` จะมีไฟล์:
+
+```text
+/var/ossec/active-response/bin/block-malicious.sh
+/var/ossec/logs/active-responses.log
+```
+
 ## ตรวจสอบ Linux Client หลังติดตั้ง
 
 ```bash
 sudo systemctl status wazuh-agent --no-pager
 sudo tail -f /var/ossec/logs/ossec.log
 sudo tail -f /var/ossec/logs/active-responses.log
+sudo iptables -S | grep wazuh-misp-block
 ```
 
 ## Active Response คืออะไร

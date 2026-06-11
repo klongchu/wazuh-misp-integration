@@ -36,12 +36,12 @@ if [ -z "$WAZUH_MANAGER" ]; then
 fi
 
 # 1. Install Wazuh Agent
-echo "[1/5] Installing Wazuh Agent"
+echo "[1/6] Installing Wazuh Agent"
 curl -sO https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.14.0-1_amd64.deb
 apt install ./wazuh-agent_4.14.0-1_amd64.deb -y
 
 # 2. Configure Wazuh Agent
-echo "[2/5] Configuring Wazuh Agent"
+echo "[2/6] Configuring Wazuh Agent"
 WAZUH_AGENT_CONF="/var/ossec/etc/ossec.conf"
 cp "$WAZUH_AGENT_CONF" "${WAZUH_AGENT_CONF}.bak_$(date +%Y%m%d_%H%M%S)"
 
@@ -67,7 +67,7 @@ fi
 
 # 3. Install Active Response (if enabled)
 if [[ "$INSTALL_ACTIVE_RESPONSE" =~ ^[Yy]$ ]]; then
-    echo "[3/5] Installing Active Response files"
+    echo "[3/6] Installing Active Response files"
     AR_BIN_PATH="/var/ossec/active-response/bin"
     mkdir -p "$AR_BIN_PATH"
 
@@ -131,11 +131,11 @@ EOF
         echo "[INFO] Active Response config already exists in ossec.conf"
     fi
 else
-    echo "[3/5] Skipping Active Response installation"
+    echo "[3/6] Skipping Active Response installation"
 fi
 
 # 4. Restart Wazuh Agent
-    echo "[4/6] Restarting Wazuh Agent"
+echo "[4/6] Restarting Wazuh Agent"
 systemctl daemon-reload
 systemctl enable wazuh-agent
 systemctl restart wazuh-agent
