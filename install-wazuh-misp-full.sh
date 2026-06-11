@@ -32,6 +32,18 @@ backup_file_if_exists() {
   fi
 }
 
+prompt_tty() {
+  local var_name="$1"
+  local prompt_text="$2"
+  local value=""
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    read -r -p "$prompt_text" value </dev/tty >/dev/tty 2>/dev/tty
+  else
+    read -r -p "$prompt_text" value
+  fi
+  printf -v "$var_name" '%s' "$value"
+}
+
 upsert_managed_block() {
   local file="$1"
   local marker="$2"
@@ -69,14 +81,14 @@ echo " Wazuh + MISP Full IOC Detection Installer"
 echo "=============================================="
 echo ""
 
-read -p "เตรียมเครื่องตาม Lab HTML แล้วหรือยัง? [y/N]: " PREP_DONE
-read -p "ตั้ง hostname เป็น wazuh-server อัตโนมัติไหม? [y/N]: " SET_HOSTNAME
-read -p "MISP URL เช่น https://misp.domain.local: " MISP_URL
-read -p "MISP API/Auth Key: " MISP_API_KEY
-read -p "Telegram Bot Token: " TELEGRAM_TOKEN
-read -p "Telegram Chat ID: " TELEGRAM_CHAT_ID
-read -p "Enable Active Response? [yes/no] (default: yes): " ENABLE_ACTIVE_RESPONSE
-read -p "Active Response Timeout (default: 600): " ACTIVE_RESPONSE_TIMEOUT
+prompt_tty PREP_DONE "เตรียมเครื่องตาม Lab HTML แล้วหรือยัง? [y/N]: "
+prompt_tty SET_HOSTNAME "ตั้ง hostname เป็น wazuh-server อัตโนมัติไหม? [y/N]: "
+prompt_tty MISP_URL "MISP URL เช่น https://misp.domain.local: "
+prompt_tty MISP_API_KEY "MISP API/Auth Key: "
+prompt_tty TELEGRAM_TOKEN "Telegram Bot Token: "
+prompt_tty TELEGRAM_CHAT_ID "Telegram Chat ID: "
+prompt_tty ENABLE_ACTIVE_RESPONSE "Enable Active Response? [yes/no] (default: yes): "
+prompt_tty ACTIVE_RESPONSE_TIMEOUT "Active Response Timeout (default: 600): "
 
 echo ""
 
