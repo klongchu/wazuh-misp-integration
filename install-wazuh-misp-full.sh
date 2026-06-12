@@ -406,7 +406,7 @@ chown root:wazuh "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
 
 upsert_managed_block "$OSSEC_CONF" "WAZUH_TELEGRAM_INTEGRATION" '  <integration>
     <name>custom-telegram</name>
-    <rule_id>100800,100801,100802,100803,100804,100805</rule_id>
+    <level>12</level>
     <alert_format>json</alert_format>
   </integration>'
 
