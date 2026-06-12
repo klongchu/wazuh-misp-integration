@@ -10,6 +10,10 @@
 #
 # ===== Core Logic: shared validation and prompt flow =====
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/wazuh_misp_common.sh"
+
 # Requires root privileges
 if [ "$(id -u)" -ne 0 ]; then
     echo "[ERROR] This script must be run as root"
