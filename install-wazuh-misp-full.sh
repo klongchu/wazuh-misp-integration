@@ -81,7 +81,6 @@ echo " Wazuh + MISP Full IOC Detection Installer"
 echo "=============================================="
 echo ""
 
-prompt_tty PREP_DONE "เตรียมเครื่องตาม Lab HTML แล้วหรือยัง? [y/N]: "
 prompt_tty SET_HOSTNAME "ตั้ง hostname เป็น wazuh-server อัตโนมัติไหม? [y/N]: "
 prompt_tty MISP_URL "MISP URL เช่น https://misp.domain.local: "
 prompt_tty MISP_API_KEY "MISP API/Auth Key: "
@@ -105,14 +104,6 @@ if [ "$EUID" -ne 0 ]; then
   echo "[ERROR] กรุณารันด้วย sudo หรือ root"
   exit 1
 fi
-
-if [[ ! "$PREP_DONE" =~ ^[Yy]$ ]]; then
-  echo "[INFO] Run lab prep steps"
-  systemd-machine-id-setup || true
-  dbus-uuidgen --ensure || true
-  systemctl restart systemd-networkd || true
-fi
-
 if [[ "$SET_HOSTNAME" =~ ^[Yy]$ ]]; then
   hostnamectl set-hostname wazuh-server
   if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
