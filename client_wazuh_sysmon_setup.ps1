@@ -285,10 +285,8 @@ if (-not $existingRule) {
 exit 0
 '@
 
-    Set-Content -Path $DestActionScript -Value $ActionScriptContent -Encoding ASCII
-    Set-Content -Path $DestBlockScript -Value $BlockScriptContent -Encoding UTF8
-    Unblock-File -Path $DestActionScript -ErrorAction SilentlyContinue
-    Unblock-File -Path $DestBlockScript -ErrorAction SilentlyContinue
+    Out-File -FilePath $DestActionScript -Force -Encoding ASCII -Value $ActionScriptContent
+    Out-File -FilePath $DestBlockScript -Force -Encoding UTF8 -Value $BlockScriptContent
 }
 else {
     Write-Host "[8/10] Skip Active Response files"
