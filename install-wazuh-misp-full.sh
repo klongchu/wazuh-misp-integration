@@ -89,6 +89,15 @@ if [ -f "$ENV_FILE" ]; then
   # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
+
+  RECONFIGURE_ENV="${RECONFIGURE_ENV:-}"
+  if [ -z "$RECONFIGURE_ENV" ]; then
+    prompt_tty RECONFIGURE_ENV "ต้องการแก้ไขค่า config/env หรือไม่? [y/N]: "
+  fi
+
+  if [[ "$RECONFIGURE_ENV" =~ ^[Yy]$ ]]; then
+    unset SET_HOSTNAME MISP_URL MISP_API_KEY TELEGRAM_TOKEN TELEGRAM_CHAT_ID ENABLE_ACTIVE_RESPONSE ACTIVE_RESPONSE_TIMEOUT
+  fi
 fi
 
 if [ -z "$SET_HOSTNAME" ]; then
