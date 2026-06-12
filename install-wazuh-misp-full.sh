@@ -22,6 +22,7 @@ LINUX_AR_FILE="$AR_DIR/block-misp-ioc.sh"
 WINDOWS_AR_DIR="/root/wazuh-windows-active-response"
 WINDOWS_AR_BAT="$WINDOWS_AR_DIR/action-script.bat"
 WINDOWS_AR_PS1="$WINDOWS_AR_DIR/block-malicious.ps1"
+WINDOWS_FIM_FILE="$WINDOWS_AR_DIR/windows-fim-ossec.conf"
 
 backup_file_if_exists() {
   local file="$1"
@@ -123,7 +124,20 @@ EXISTING_FILES=(
   "$WINDOWS_AR_PS1"
 )
 
-for file in \"${EXISTING_FILES[@]}\"; do\n  if [ -f \"$file\" ]; then\n    FOUND_EXISTING=1\n    echo \"[INFO] พบไฟล์เดิม: $file\"\n    prompt_tty \"UPDATE_${file//\//_}\" \"ต้องการอัปเดต $file หรือไม่? [y/N]: \"\n    if [[ ! \"${UPDATE_${file//\//_}}\" =~ ^[Yy]$ ]]; then\n      echo \"[INFO] ยกเลิกการติดตั้ง\"\n      exit 0\n    fi\n  fi\ndone\n
+FOUND_EXISTING=0
+for file in "${EXISTING_FILES[@]}"; do
+  if [ -f "$file" ]; then
+    FOUND_EXISTING=1
+    echo "[INFO] พบไฟล์เดิม: $file"
+    prompt_tty UPDATE_FILE "ต้องการอัปเดต $file หรือไม่? [y/N]: "
+    UPDATE_FILE="${UPDATE_FILE:-N}"
+    if [[ ! "$UPDATE_FILE" =~ ^[Yy]$ ]]; then
+      echo "[INFO] ยกเลิกการติดตั้ง"
+      exit 0
+    fi
+  fi
+done
+
 if [ ! -d "$OSSEC_DIR" ]; then
   echo "[ERROR] ไม่พบ $OSSEC_DIR กรุณาติดตั้ง Wazuh Manager ก่อน"
   exit 1
@@ -428,6 +442,29 @@ if ($ioc -match '^\d{1,3}(\.\d{1,3}){3}$') {
 
     Add-Content $log "$(Get-Date) Blocked MISP IOC IP: $ioc"
 }
+EOF
+
+cat > "$WINDOWS_FIM_FILE" <<'EOF'
+<syscheck>
+  <disabled>no</disabled>
+  <frequency>43200</frequency>
+  <scan_on_start>yes</scan_on_start>
+  <alert_new_files>yes</alert_new_files>
+
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Users</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Program Files</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Program Files (x86)</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Windows\System32</directories>
+
+  <ignore>C:\Windows\Temp</ignore>
+  <ignore>C:\Windows\Prefetch</ignore>
+  <ignore>C:\Windows\WinSxS</ignore>
+</syscheck>
+EOF
+
+cat <<EOF
+[INFO] Windows FIM config saved: $WINDOWS_FIM_FILE
+[INFO] Apply file to Windows agent ossec.conf under <ossec_config>
 EOF
 
 echo "[11/12] Verify/Create Sysmon Event ID 22 rule"
