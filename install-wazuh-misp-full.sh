@@ -24,6 +24,8 @@ WINDOWS_AR_BAT="$WINDOWS_AR_DIR/action-script.bat"
 WINDOWS_AR_PS1="$WINDOWS_AR_DIR/block-malicious.ps1"
 WINDOWS_FIM_FILE="$WINDOWS_AR_DIR/windows-fim-ossec.conf"
 ENV_FILE="${ENV_FILE:-./wazuh-misp.env}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_CUSTOM_MISP="$SCRIPT_DIR/custom-misp"
 
 backup_file_if_exists() {
   local file="$1"
@@ -200,18 +202,21 @@ echo "[1/12] Install packages"
 apt update
 apt install -y curl wget python3 python3-pip jq net-tools
 
-echo "[2/12] Download custom-misp"
+echo "[2/12] Install custom-misp"
 cd "$INTEGRATION_DIR"
 
 if [ -f custom-misp ]; then
   cp custom-misp "$BACKUP_DIR/custom-misp.bak"
 fi
 
-wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-misp
-# Add logging to custom-misp
-sed -i "s|^LOG_FILE = \"/var/ossec/logs/integrations.log\"|LOG_FILE = \"/var/ossec/logs/integrations.log\"|g" custom-misp || true
-sed -i "s|^MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|g" custom-misp || true
-sed -i "s|^MISP_API_KEY = \"${MISP_API_KEY}\"|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
+if [ -f "$LOCAL_CUSTOM_MISP" ]; then
+  echo "[INFO] ใช้ custom-misp จาก $LOCAL_CUSTOM_MISP"
+  cp "$LOCAL_CUSTOM_MISP" custom-misp
+else
+  echo "[WARN] ไม่พบ $LOCAL_CUSTOM_MISP ใช้ fallback download"
+  wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-misp
+fi
+
 chmod 750 custom-misp
 chown root:wazuh custom-misp
 

@@ -126,7 +126,7 @@ def query_misp(value):
         )
 
         if response.status_code >= 400:
-            return {"error": f"MISP API HTTP {response.status_code}: {response.text[:500]}"}
+            return {"error": f"MISP - Error connecting to API: HTTP {response.status_code}: {response.text[:500]}"}
 
         return response.json()
 
@@ -155,6 +155,8 @@ def handle_misp_response(misp_api_response, alert, alert_output):
         alert_output["misp"] = {}
         alert_output["integration"] = "misp"
         alert_output["misp"]["error"] = misp_api_response["error"]
+        alert_output["misp"]["category"] = ""
+        alert_output["misp"]["value"] = ""
         send_event(alert_output, alert.get("agent"))
         return
 
@@ -180,7 +182,10 @@ def handle_misp_response(misp_api_response, alert, alert_output):
         alert_output["misp"]["type"] = attribute.get("type", "")
         alert_output["misp"]["source"]["description"] = alert.get("rule", {}).get("description", "")
 
+        log(f"hit rule_id={get_nested(alert, 'rule', 'id')} category={alert_output['misp']['category']} value={alert_output['misp']['value']}")
         send_event(alert_output, alert.get("agent"))
+    else:
+        log(f"miss rule_id={get_nested(alert, 'rule', 'id')} attributes={len(attributes)}")
 
 
 def main():
