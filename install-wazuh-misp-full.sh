@@ -340,7 +340,11 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
   </integration>'
 
 echo "[8/12] Add Telegram custom integration"
-wget -O "$TELEGRAM_WRAPPER_FILE" https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-telegram
+if [ -f "$SCRIPT_DIR/custom-telegram" ]; then
+  cp "$SCRIPT_DIR/custom-telegram" "$TELEGRAM_WRAPPER_FILE"
+else
+  wget -O "$TELEGRAM_WRAPPER_FILE" https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-telegram
+fi
 cat > "$TELEGRAM_PY_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
 import sys
