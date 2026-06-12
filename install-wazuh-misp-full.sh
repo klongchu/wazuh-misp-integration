@@ -23,6 +23,7 @@ WINDOWS_AR_DIR="/root/wazuh-windows-active-response"
 WINDOWS_AR_BAT="$WINDOWS_AR_DIR/action-script.bat"
 WINDOWS_AR_PS1="$WINDOWS_AR_DIR/block-malicious.ps1"
 WINDOWS_FIM_FILE="$WINDOWS_AR_DIR/windows-fim-ossec.conf"
+ENV_FILE="${ENV_FILE:-./wazuh-misp.env}"
 
 backup_file_if_exists() {
   local file="$1"
@@ -82,24 +83,59 @@ echo " Wazuh + MISP Full IOC Detection Installer"
 echo "=============================================="
 echo ""
 
-prompt_tty SET_HOSTNAME "ตั้ง hostname เป็น wazuh-server อัตโนมัติไหม? [y/N]: "
-prompt_tty MISP_URL "MISP URL เช่น https://misp.domain.local: "
-prompt_tty MISP_API_KEY "MISP API/Auth Key: "
-prompt_tty TELEGRAM_TOKEN "Telegram Bot Token: "
-prompt_tty TELEGRAM_CHAT_ID "Telegram Chat ID: "
-prompt_tty ENABLE_ACTIVE_RESPONSE "Enable Active Response? [yes/no] (default: yes): "
-prompt_tty ACTIVE_RESPONSE_TIMEOUT "Active Response Timeout (default: 600): "
+if [ -f "$ENV_FILE" ]; then
+  echo "[INFO] Load config from $ENV_FILE"
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+if [ -z "$SET_HOSTNAME" ]; then
+  prompt_tty SET_HOSTNAME "ตั้ง hostname เป็น wazuh-server อัตโนมัติไหม? [y/N]: "
+fi
+if [ -z "$MISP_URL" ]; then
+  prompt_tty MISP_URL "MISP URL เช่น https://misp.domain.local: "
+fi
+if [ -z "$MISP_API_KEY" ]; then
+  prompt_tty MISP_API_KEY "MISP API/Auth Key: "
+fi
+if [ -z "$TELEGRAM_TOKEN" ]; then
+  prompt_tty TELEGRAM_TOKEN "Telegram Bot Token: "
+fi
+if [ -z "$TELEGRAM_CHAT_ID" ]; then
+  prompt_tty TELEGRAM_CHAT_ID "Telegram Chat ID: "
+fi
+if [ -z "$ENABLE_ACTIVE_RESPONSE" ]; then
+  prompt_tty ENABLE_ACTIVE_RESPONSE "Enable Active Response? [yes/no] (default: yes): "
+fi
+if [ -z "$ACTIVE_RESPONSE_TIMEOUT" ]; then
+  prompt_tty ACTIVE_RESPONSE_TIMEOUT "Active Response Timeout (default: 600): "
+fi
 
 echo ""
 
 MISP_URL="${MISP_URL%/}"
 ENABLE_ACTIVE_RESPONSE="${ENABLE_ACTIVE_RESPONSE:-yes}"
 ACTIVE_RESPONSE_TIMEOUT="${ACTIVE_RESPONSE_TIMEOUT:-600}"
+SET_HOSTNAME="${SET_HOSTNAME:-N}"
 
 if [ -z "$MISP_URL" ] || [ -z "$MISP_API_KEY" ] || [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
   echo "[ERROR] MISP URL, API Key, Telegram Token, Telegram Chat ID ห้ามว่าง"
   exit 1
 fi
+
+cat > "$ENV_FILE" <<EOF
+SET_HOSTNAME="$SET_HOSTNAME"
+MISP_URL="$MISP_URL"
+MISP_API_KEY="$MISP_API_KEY"
+TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
+TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"
+ENABLE_ACTIVE_RESPONSE="$ENABLE_ACTIVE_RESPONSE"
+ACTIVE_RESPONSE_TIMEOUT="$ACTIVE_RESPONSE_TIMEOUT"
+EOF
+chmod 600 "$ENV_FILE"
+echo "[INFO] Save config to $ENV_FILE"
 
 if [ "$EUID" -ne 0 ]; then
   echo "[ERROR] กรุณารันด้วย sudo หรือ root"
@@ -122,6 +158,7 @@ EXISTING_FILES=(
   "$LINUX_AR_FILE"
   "$WINDOWS_AR_BAT"
   "$WINDOWS_AR_PS1"
+  "$ENV_FILE"
 )
 
 FOUND_EXISTING=0
