@@ -1,5 +1,6 @@
 #!/var/ossec/framework/python/bin/python3
 import sys
+import os
 import json
 import html
 import time

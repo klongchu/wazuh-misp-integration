@@ -319,12 +319,13 @@ wget -O "$TELEGRAM_WRAPPER_FILE" https://raw.githubusercontent.com/klongchu/wazu
 cat > "$TELEGRAM_PY_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
 import sys
+import os
 import json
 import html
 import requests
 
-BOT_TOKEN = "${TELEGRAM_TOKEN}"
-CHAT_ID = "${TELEGRAM_CHAT_ID}"
+BOT_TOKEN = os.getenv("TELEGRAM_TOKEN", "${TELEGRAM_TOKEN}")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "${TELEGRAM_CHAT_ID}")
 
 def value(data, path, default="-"):
     current = data
