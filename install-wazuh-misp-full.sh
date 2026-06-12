@@ -160,11 +160,11 @@ for file in "${EXISTING_FILES[@]}"; do
   backup_file_if_exists "$file"
 done
 
-echo "[1/10] Install packages"
+echo "[1/12] Install packages"
 apt update
 apt install -y curl wget python3 python3-pip jq net-tools
 
-echo "[2/10] Download custom-misp"
+echo "[2/12] Download custom-misp"
 cd "$INTEGRATION_DIR"
 
 if [ -f custom-misp ]; then
@@ -175,11 +175,11 @@ wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integr
 chmod 750 custom-misp
 chown root:wazuh custom-misp
 
-echo "[3/10] Configure custom-misp"
+echo "[3/12] Configure custom-misp"
 sed -i "s|^MISP_BASE_URL *=.*|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|g" custom-misp || true
 sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
 
-echo "[4/10] Create MISP rules"
+echo "[4/12] Create MISP rules"
 cat > "$MISP_RULE_FILE" <<'EOF'
 <group name="misp,threat_intel,ioc,">
 
@@ -236,7 +236,7 @@ EOF
 chown root:wazuh "$MISP_RULE_FILE"
 chmod 660 "$MISP_RULE_FILE"
 
-echo "[5/10] Create local IOC CDB lists"
+echo "[5/12] Create local IOC CDB lists"
 mkdir -p "$LIST_DIR"
 
 touch "$LIST_DIR/malware-hashes"
@@ -251,14 +251,34 @@ if ! grep -q "etc/lists/malware-hashes" "$OSSEC_CONF"; then
   sed -i '/<ruleset>/a\    <list>etc/lists/malware-hashes</list>\n    <list>etc/lists/misp-ip</list>\n    <list>etc/lists/misp-domain</list>\n    <list>etc/lists/misp-url</list>' "$OSSEC_CONF"
 fi
 
-echo "[6/10] Add MISP integration to ossec.conf"
+echo "[6/12] Add Wazuh FIM config"
+upsert_managed_block "$OSSEC_CONF" "WAZUH_FIM_CONFIGURATION" '  <syscheck>
+    <disabled>no</disabled>
+    <frequency>43200</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <alert_new_files>yes</alert_new_files>
+
+    <directories check_all="yes" realtime="yes" report_changes="yes">/etc</directories>
+    <directories check_all="yes" realtime="yes" report_changes="yes">/usr/bin</directories>
+    <directories check_all="yes" realtime="yes" report_changes="yes">/usr/sbin</directories>
+    <directories check_all="yes" realtime="yes" report_changes="yes">/var/www</directories>
+    <directories check_all="yes" realtime="yes" report_changes="yes">/home</directories>
+
+    <ignore>/etc/mtab</ignore>
+    <ignore>/etc/hosts.deny</ignore>
+    <ignore>/etc/mail/statistics</ignore>
+    <ignore>/etc/random-seed</ignore>
+    <ignore>/etc/.java</ignore>
+  </syscheck>'
+
+echo "[7/12] Add MISP integration to ossec.conf"
 upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
     <name>custom-misp</name>
     <group>sysmon_event_1,sysmon_event_3,sysmon_event_6,sysmon_event_7,sysmon_event_22,web,syscheck,</group>
     <alert_format>json</alert_format>
   </integration>'
 
-echo "[7/10] Add Telegram custom integration"
+echo "[8/12] Add Telegram custom integration"
 wget -O "$TELEGRAM_WRAPPER_FILE" https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-telegram
 cat > "$TELEGRAM_PY_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
@@ -353,7 +373,7 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_TELEGRAM_INTEGRATION" '  <integration>
     <alert_format>json</alert_format>
   </integration>'
 
-echo "[8/10] Create Linux Active Response script"
+echo "[9/12] Create Linux Active Response script"
 cat > "$LINUX_AR_FILE" <<'EOF'
 #!/bin/bash
 ACTION=$1
@@ -402,7 +422,7 @@ if [ "$ENABLE_ACTIVE_RESPONSE" = "yes" ]; then
   </active-response>"
 fi
 
-echo "[9/10] Create Windows Active Response files"
+echo "[10/12] Create Windows Active Response files"
 mkdir -p "$WINDOWS_AR_DIR"
 
 cat > "$WINDOWS_AR_BAT" <<'EOF'
@@ -434,7 +454,7 @@ if ($ioc -match '^\d{1,3}(\.\d{1,3}){3}$') {
 }
 EOF
 
-echo "[10/10] Verify/Create Sysmon Event ID 22 rule"
+echo "[11/12] Verify/Create Sysmon Event ID 22 rule"
 LOCAL_RULES="$RULE_DIR/local_rules.xml"
 
 if grep -R "sysmon_event_22" /var/ossec/ruleset/rules/ "$RULE_DIR" >/dev/null 2>&1; then
@@ -469,7 +489,7 @@ EOF
   fi
 fi
 
-echo "[11/11] Validate and restart Wazuh"
+echo "[12/12] Validate and restart Wazuh"
 "$OSSEC_DIR/bin/wazuh-analysisd" -t || {
   echo "[ERROR] Wazuh config test failed"
   echo "Backup อยู่ที่ $BACKUP_DIR"
