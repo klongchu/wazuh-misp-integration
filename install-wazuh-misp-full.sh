@@ -293,6 +293,7 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_FIM_CONFIGURATION" '  <syscheck>
     <frequency>43200</frequency>
     <scan_on_start>yes</scan_on_start>
     <alert_new_files>yes</alert_new_files>
+    <client_buffer_size>200000</client_buffer_size>
 
     <directories check_all="yes" realtime="yes" report_changes="yes">/etc</directories>
     <directories check_all="yes" realtime="yes" report_changes="yes">/usr/bin</directories>
