@@ -208,6 +208,10 @@ if [ -f custom-misp ]; then
 fi
 
 wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-misp
+# Add logging to custom-misp
+sed -i "s|^LOG_FILE = \"/var/ossec/logs/integrations.log\"|LOG_FILE = \"/var/ossec/logs/integrations.log\"|g" custom-misp || true
+sed -i "s|^MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|g" custom-misp || true
+sed -i "s|^MISP_API_KEY = \"${MISP_API_KEY}\"|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
 chmod 750 custom-misp
 chown root:wazuh custom-misp
 
@@ -218,6 +222,15 @@ sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp |
 echo "[4/12] Create MISP rules"
 cat > "$MISP_RULE_FILE" <<'EOF'
 <group name="misp,threat_intel,ioc,">
+
+  <rule id="100620" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="integration">misp</field>
+    <match>MISP - Error connecting to API</match>
+    <description>MISP - Error connecting to API</description>
+    <options>no_full_log</options>
+    <group>misp_error,</group>
+  </rule>
 
   <rule id="100800" level="10">
     <decoded_as>json</decoded_as>
@@ -264,6 +277,13 @@ cat > "$MISP_RULE_FILE" <<'EOF'
     <field name="misp.category">Payload delivery|Artifacts dropped|Network activity</field>
     <description>High Severity MISP IOC Alert: $(misp.value)</description>
     <group>misp_high,incident,</group>
+  </rule>
+
+  <rule id="100806" level="12">
+    <if_sid>100800</if_sid>
+    <description>MISP - IoC found in Threat Intel - Category: $(misp.category), Attribute: $(misp.value)</description>
+    <options>no_full_log</options>
+    <group>misp_alert,</group>
   </rule>
 
 </group>

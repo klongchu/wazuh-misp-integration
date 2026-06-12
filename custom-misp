@@ -11,10 +11,11 @@ from requests.exceptions import ConnectionError, Timeout, RequestException
 # Wazuh queue socket
 pwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 socket_addr = f"{pwd}/queue/sockets/queue"
+LOG_FILE = "/var/ossec/logs/integrations.log"
 
 # MISP configuration
-MISP_BASE_URL = os.getenv("MISP_BASE_URL", "https://{IP/Domain MISP}/attributes/restSearch/")
-MISP_API_KEY = os.getenv("MISP_API_KEY", "API Key")
+MISP_BASE_URL = os.getenv("MISP_BASE_URL", "https://{IP/Domain MISP}/attributes/restSearch/").strip()
+MISP_API_KEY = os.getenv("MISP_API_KEY", "API Key").strip()
 
 MISP_HEADERS = {
     "Content-Type": "application/json",
@@ -54,56 +55,57 @@ def normalize_value(value):
 
 
 def extract_event_param(alert):
-    event_source = alert.get("rule", {}).get("groups", [""])[0]
-    groups = alert.get("rule", {}).get("groups", [])
-    event_type = groups[2] if len(groups) > 2 else ""
+    groups = alert.get("rule", {}).get("groups", []) or []
+    group_set = {str(group).lower() for group in groups}
 
     regex_file_hash = re.compile(r"\b[A-Fa-f0-9]{64}\b")
 
     try:
-        if event_source == "windows":
-            if event_type in (
-                "sysmon_event1",
-                "sysmon_event6",
-                "sysmon_event7",
+        win_eventdata = get_nested(alert, "data", "win", "eventdata")
+        linux_eventdata = get_nested(alert, "data", "eventdata")
+
+        if isinstance(win_eventdata, dict):
+            if group_set.intersection({
+                "sysmon_event_1",
+                "sysmon_event_6",
+                "sysmon_event_7",
+                "sysmon_event_15",
                 "sysmon_event_23",
                 "sysmon_event_24",
                 "sysmon_event_25",
-            ):
-                hashes_str = alert["data"]["win"]["eventdata"]["hashes"]
-                match = regex_file_hash.search(hashes_str)
-                return match.group(0) if match else None
+            }):
+                hashes_str = get_nested(win_eventdata, "hashes") or get_nested(win_eventdata, "hash")
+                if hashes_str:
+                    match = regex_file_hash.search(str(hashes_str))
+                    return match.group(0) if match else None
 
-            elif event_type == "sysmon_event_15":
-                hashes_str = alert["data"]["win"]["eventdata"]["hash"]
-                match = regex_file_hash.search(hashes_str)
-                return match.group(0) if match else None
-
-            elif event_type == "sysmon_event3":
-                if alert["data"]["win"]["eventdata"].get("destinationIsIpv6") == "false":
-                    dst_ip = alert["data"]["win"]["eventdata"]["destinationIp"]
-                    if ipaddress.ip_address(dst_ip).is_global:
-                        return dst_ip
+            if "sysmon_event_3" in group_set:
+                is_ipv6 = str(get_nested(win_eventdata, "destinationIsIpv6") or "false").lower()
+                dst_ip = get_nested(win_eventdata, "destinationIp")
+                if dst_ip and is_ipv6 == "false" and ipaddress.ip_address(dst_ip).is_global:
+                    return dst_ip
                 return None
 
-            elif event_type == "sysmon_event_22":
-                query_name = alert["data"]["win"]["eventdata"].get("queryName")
+            if "sysmon_event_22" in group_set:
+                query_name = get_nested(win_eventdata, "queryName")
                 return normalize_value(query_name)
 
-        elif event_source == "linux":
-            if event_type == "sysmon_event3":
-                if alert["data"]["eventdata"].get("destinationIsIpv6") == "false":
-                    dst_ip = alert["data"]["eventdata"]["DestinationIp"]
-                    if ipaddress.ip_address(dst_ip).is_global:
-                        return dst_ip
+        if isinstance(linux_eventdata, dict):
+            if "sysmon_event_3" in group_set:
+                is_ipv6 = str(get_nested(linux_eventdata, "destinationIsIpv6") or "false").lower()
+                dst_ip = get_nested(linux_eventdata, "DestinationIp") or get_nested(linux_eventdata, "destinationIp")
+                if dst_ip and is_ipv6 == "false" and ipaddress.ip_address(dst_ip).is_global:
+                    return dst_ip
                 return None
 
-        elif event_source == "ossec" and event_type == "syscheck_entry_added":
-            return alert["syscheck"]["sha256_after"]
+        if "syscheck_entry_added" in group_set:
+            return get_nested(alert, "syscheck", "sha256_after")
 
-    except (KeyError, IndexError, ValueError):
+    except (ValueError, TypeError) as exc:
+        log(f"extract failed rule_id={get_nested(alert, 'rule', 'id')} groups={groups} error={exc}")
         return None
 
+    log(f"unsupported alert rule_id={get_nested(alert, 'rule', 'id')} groups={groups}")
     return None
 
 
@@ -122,6 +124,10 @@ def query_misp(value):
             verify=False,
             timeout=10,
         )
+
+        if response.status_code >= 400:
+            return {"error": f"MISP API HTTP {response.status_code}: {response.text[:500]}"}
+
         return response.json()
 
     except ConnectionError:
@@ -145,6 +151,7 @@ def is_warninglist_hit(attribute):
 
 def handle_misp_response(misp_api_response, alert, alert_output):
     if "error" in misp_api_response:
+        log(f"api error rule_id={get_nested(alert, 'rule', 'id')} error={misp_api_response['error']}")
         alert_output["misp"] = {}
         alert_output["integration"] = "misp"
         alert_output["misp"]["error"] = misp_api_response["error"]
@@ -187,12 +194,15 @@ def main():
 
     wazuh_event_param = extract_event_param(alert)
     if not wazuh_event_param:
+        log(f"skip no_ioc rule_id={get_nested(alert, 'rule', 'id')} groups={alert.get('rule', {}).get('groups', [])}")
         sys.exit(0)
 
     wazuh_event_param = normalize_value(wazuh_event_param)
     if not wazuh_event_param:
+        log(f"skip normalize_empty rule_id={get_nested(alert, 'rule', 'id')}")
         sys.exit(0)
 
+    log(f"query rule_id={get_nested(alert, 'rule', 'id')} value={wazuh_event_param}")
     misp_api_response = query_misp(wazuh_event_param)
     handle_misp_response(misp_api_response, alert, alert_output)
 
