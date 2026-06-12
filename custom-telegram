@@ -2,10 +2,29 @@
 import sys
 import json
 import html
+import time
+import traceback
+from datetime import datetime, timezone
+
 import requests
 
 BOT_TOKEN = "${TELEGRAM_TOKEN}"
 CHAT_ID = "${TELEGRAM_CHAT_ID}"
+LOG_FILE = "/var/ossec/logs/integrations.log"
+REQUEST_TIMEOUT = 5
+
+
+def now():
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds")
+
+
+def log(msg):
+    line = f"[custom-telegram] {now()} {msg}\n"
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
 
 
 def value(data, path, default="-"):
@@ -34,8 +53,10 @@ def esc(text):
     return html.escape(str(text))
 
 
+start = time.monotonic()
 try:
     alert_file = sys.argv[1]
+    log(f"start alert_file={alert_file}")
 
     with open(alert_file, "r", encoding="utf-8") as f:
         alert = json.load(f)
@@ -69,18 +90,25 @@ try:
 """
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
     payload = {
         "chat_id": CHAT_ID,
         "text": message,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True
+        "disable_web_page_preview": True,
     }
 
-    response = requests.post(url, json=payload, timeout=10)
+    t0 = time.monotonic()
+    log(f"send start rule_id={rule_id} level={level} location={location}")
+    response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
 
     if response.status_code != 200:
+        log(f"send failed status={response.status_code} elapsed_ms={elapsed_ms} body={response.text[:500]}")
         print(f"Telegram API Error: {response.status_code} {response.text}")
+    else:
+        log(f"send ok status={response.status_code} elapsed_ms={elapsed_ms}")
 
 except Exception as e:
+    log(f"error elapsed_ms={int((time.monotonic() - start) * 1000)} err={e}")
+    log(traceback.format_exc().strip())
     print(f"Telegram integration error: {e}")
