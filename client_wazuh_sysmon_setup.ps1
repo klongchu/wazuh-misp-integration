@@ -1,4 +1,17 @@
+# Boundary map for refactoring:
+# - Windows-specific wrapper: admin check, MSI install/update, Sysmon, ossec.conf edit, active response, service restart
+# - Shared/edit-worthy logic: config backup and parse/validate patterns reused by installer steps
 #requires -RunAsAdministrator
+# Wazuh Agent + Sysmon + Active Response Setup for Windows Clients
+#
+# Refactor map for later core + wrapper split:
+# - Core Logic: prerequisite checks, interactive prompts, download helpers, config backup,
+#   managed ossec.conf updates, and service validation/restart flow.
+# - Windows Role Logic: MSI-based agent install/reinstall, Sysmon download/install,
+#   Windows event channel wiring, and Windows Firewall active response.
+#
+# ===== Core Logic: shared validation, prompt flow, and helper functions =====
+
 # Check for required commands
 if (-not (Get-Command msiexec.exe -ErrorAction SilentlyContinue)) {
     Write-Host "[ERROR] msiexec.exe not found. Please ensure it is available in your system PATH."

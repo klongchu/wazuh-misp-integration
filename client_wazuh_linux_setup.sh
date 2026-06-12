@@ -1,6 +1,14 @@
 #!/bin/bash
 
 # Wazuh Agent + Active Response Setup for Linux Clients
+#
+# Refactor map for later core + wrapper split:
+# - Core Logic: privilege/dependency checks, interactive prompts, config backup, ossec.conf updates,
+#   XML validation, and service verification.
+# - Linux Role Logic: apt-based agent install, Linux agent identity settings, iptables active response,
+#   and Linux-specific service/log handling.
+#
+# ===== Core Logic: shared validation and prompt flow =====
 
 # Requires root privileges
 if [ "$(id -u)" -ne 0 ]; then

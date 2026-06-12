@@ -1,10 +1,21 @@
 #!/bin/bash
+# Boundary map for refactoring:
+# - Shared/reusable logic: backup, prompt, managed config block updates, validation helpers
+# - Server-specific logic: MISP/custom-misp, ossec.conf, rules, lists, Telegram, active response, Windows artifact generation, Sysmon rule handling.
 set -e
 
 # ======================================================
 # Wazuh + MISP IOC Detection Full Setup
 # For Wazuh Manager Ubuntu
 # ======================================================
+#
+# Refactor map for later core + wrapper split:
+# - Core Logic: shared path setup, backup helpers, prompt helpers, managed config block updates,
+#   env persistence, existing-file checks, and final validation/restart flow.
+# - Server Role Logic: Wazuh manager package install, MISP integration, rules, lists, Telegram,
+#   Linux active response, Windows artifact generation, and Sysmon rule handling.
+#
+# ===== Core Logic: shared paths and helper functions =====
 
 OSSEC_DIR="/var/ossec"
 OSSEC_CONF="$OSSEC_DIR/etc/ossec.conf"
@@ -335,7 +346,7 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_FIM_CONFIGURATION" '  <syscheck>
 echo "[7/12] Add MISP integration to ossec.conf"
 upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
     <name>custom-misp</name>
-    <group>sysmon_event_1,sysmon_event_3,sysmon_event_6,sysmon_event_7,sysmon_event_22,web,syscheck,</group>
+    <group>sysmon_event_1,sysmon_event_3,sysmon_event_6,sysmon_event_7,sysmon_event_15,sysmon_event_22,syscheck</group>
     <alert_format>json</alert_format>
   </integration>'
 
