@@ -123,23 +123,7 @@ EXISTING_FILES=(
   "$WINDOWS_AR_PS1"
 )
 
-FOUND_EXISTING=0
-for file in "${EXISTING_FILES[@]}"; do
-  if [ -f "$file" ]; then
-    FOUND_EXISTING=1
-    echo "[INFO] พบไฟล์เดิม: $file"
-  fi
-done
-
-if [ "$FOUND_EXISTING" -eq 1 ]; then
-  prompt_tty CONTINUE_UPDATE "พบไฟล์เดิมแล้ว ต้องการอัปเดต/เพิ่มเฉพาะส่วนที่ขาดต่อไหม? [Y/n]: "
-  CONTINUE_UPDATE="${CONTINUE_UPDATE:-Y}"
-  if [[ ! "$CONTINUE_UPDATE" =~ ^[Yy]$ ]]; then
-    echo "[INFO] ยกเลิกการติดตั้ง"
-    exit 0
-  fi
-fi
-
+for file in \"${EXISTING_FILES[@]}\"; do\n  if [ -f \"$file\" ]; then\n    FOUND_EXISTING=1\n    echo \"[INFO] พบไฟล์เดิม: $file\"\n    prompt_tty \"UPDATE_${file//\//_}\" \"ต้องการอัปเดต $file หรือไม่? [y/N]: \"\n    if [[ ! \"${UPDATE_${file//\//_}}\" =~ ^[Yy]$ ]]; then\n      echo \"[INFO] ยกเลิกการติดตั้ง\"\n      exit 0\n    fi\n  fi\ndone\n
 if [ ! -d "$OSSEC_DIR" ]; then
   echo "[ERROR] ไม่พบ $OSSEC_DIR กรุณาติดตั้ง Wazuh Manager ก่อน"
   exit 1
