@@ -58,15 +58,75 @@ $SysmonDir = "C:\Program Files\Sysmon"
 $SysmonExe = "$SysmonDir\Sysmon64.exe"
 $SysmonConfig = "$SysmonDir\sysmonconfig.xml"
 
-$WazuhUrl = "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.0-1.msi"
+$FallbackWazuhVersion = "4.14.1"
+$WazuhVersion = $FallbackWazuhVersion
+$WazuhUrl = "https://packages.wazuh.com/4.x/windows/wazuh-agent-$WazuhVersion-1.msi"
 $SysmonUrl = "https://live.sysinternals.com/Sysmon64.exe"
 $ConfigUrl = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"
+
+function Invoke-WebDownload {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile
+    )
+
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile
+}
+
+function Test-WebFileExists {
+    param([Parameter(Mandatory = $true)][string]$Uri)
+
+    try {
+        Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Uri -TimeoutSec 20 | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-LatestWazuhVersion {
+    try {
+        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/wazuh/wazuh/releases/latest" -TimeoutSec 20
+        $Version = ([string]$Release.tag_name).TrimStart('v')
+
+        if ($Version -match '^\d+\.\d+\.\d+$') {
+            return $Version
+        }
+    }
+    catch {
+        Write-Host "[WARNING] Cannot check latest Wazuh version: $($_.Exception.Message)"
+    }
+
+    return $null
+}
 
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SysmonDir | Out-Null
 
+Write-Host "[1/10] Check latest Wazuh Agent version"
+$LatestWazuhVersion = Get-LatestWazuhVersion
+if (-not [string]::IsNullOrWhiteSpace($LatestWazuhVersion)) {
+    $CandidateWazuhUrl = "https://packages.wazuh.com/4.x/windows/wazuh-agent-$LatestWazuhVersion-1.msi"
+
+    if (Test-WebFileExists -Uri $CandidateWazuhUrl) {
+        $WazuhVersion = $LatestWazuhVersion
+        $WazuhUrl = $CandidateWazuhUrl
+    }
+    else {
+        Write-Host "[WARNING] Latest Wazuh MSI not found: $CandidateWazuhUrl"
+        Write-Host "[WARNING] Fallback to Wazuh Agent $FallbackWazuhVersion"
+    }
+}
+else {
+    Write-Host "[WARNING] Fallback to Wazuh Agent $FallbackWazuhVersion"
+}
+
+Write-Host "[INFO] Wazuh Agent version: $WazuhVersion"
+Write-Host "[INFO] Wazuh Agent URL: $WazuhUrl"
+
 Write-Host "[1/10] Download Wazuh Agent"
-Invoke-WebRequest -Uri $WazuhUrl -OutFile $WazuhMsi
+Invoke-WebDownload -Uri $WazuhUrl -OutFile $WazuhMsi
 
 $ExistingWazuhService = Get-Service -ErrorAction SilentlyContinue | Where-Object {
     $_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$'
