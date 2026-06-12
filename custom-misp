@@ -13,8 +13,8 @@ pwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 socket_addr = f"{pwd}/queue/sockets/queue"
 
 # MISP configuration
-MISP_BASE_URL = "https://{IP/Domain MISP}/attributes/restSearch/"
-MISP_API_KEY = "API Key"
+MISP_BASE_URL = os.getenv("MISP_BASE_URL", "https://{IP/Domain MISP}/attributes/restSearch/")
+MISP_API_KEY = os.getenv("MISP_API_KEY", "API Key")
 
 MISP_HEADERS = {
     "Content-Type": "application/json",
