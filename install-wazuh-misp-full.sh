@@ -501,8 +501,8 @@ cat > "$WINDOWS_FIM_FILE" <<'EOF'
   <directories check_all="yes" realtime="yes" report_changes="yes">C:\Windows\System32\WindowsPowerShell\v1.0\Modules</directories>
   <directories check_all="yes" realtime="yes" report_changes="yes">C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup</directories>
   <directories check_all="yes" realtime="yes" report_changes="yes">C:\Users\Public</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Users\*\Downloads</directories>
 
-  <ignore>C:\Users\*\AppData</ignore>
   <ignore>C:\Windows\Temp</ignore>
   <ignore>C:\Windows\Prefetch</ignore>
   <ignore>C:\Windows\WinSxS</ignore>
