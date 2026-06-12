@@ -132,8 +132,9 @@ for file in "${EXISTING_FILES[@]}"; do
 done
 
 if [ "$FOUND_EXISTING" -eq 1 ]; then
-  read -p "พบการติดตั้ง Wazuh MISP Integration เดิมหรือไฟล์ซ้ำในระบบ ต้องการติดตั้งทับหรือไม่? [y/N]: " OVERWRITE_INSTALL
-  if [[ ! "$OVERWRITE_INSTALL" =~ ^[Yy]$ ]]; then
+  prompt_tty CONTINUE_UPDATE "พบไฟล์เดิมแล้ว ต้องการอัปเดต/เพิ่มเฉพาะส่วนที่ขาดต่อไหม? [Y/n]: "
+  CONTINUE_UPDATE="${CONTINUE_UPDATE:-Y}"
+  if [[ ! "$CONTINUE_UPDATE" =~ ^[Yy]$ ]]; then
     echo "[INFO] ยกเลิกการติดตั้ง"
     exit 0
   fi
