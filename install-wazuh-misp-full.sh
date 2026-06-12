@@ -259,35 +259,7 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
   </integration>'
 
 echo "[7/10] Add Telegram custom integration"
-cat > "$TELEGRAM_WRAPPER_FILE" <<'EOF'
-#!/bin/bash
-WPYTHON_BIN="framework/python/bin/python3"
-SCRIPT_PATH_NAME="$0"
-DIR_NAME="$(cd $(dirname ${SCRIPT_PATH_NAME}); pwd -P)"
-SCRIPT_NAME="$(basename ${SCRIPT_PATH_NAME})"
-case ${DIR_NAME} in
-    */active-response/bin | */wodles*)
-        if [ -z "${WAZUH_PATH}" ]; then
-            WAZUH_PATH="$(cd ${DIR_NAME}/../..; pwd)"
-        fi
-        PYTHON_SCRIPT="${DIR_NAME}/${SCRIPT_NAME}.py"
-    ;;
-    */bin)
-        if [ -z "${WAZUH_PATH}" ]; then
-            WAZUH_PATH="$(cd ${DIR_NAME}/..; pwd)"
-        fi
-        PYTHON_SCRIPT="${WAZUH_PATH}/framework/scripts/${SCRIPT_NAME}.py"
-    ;;
-     */integrations)
-        if [ -z "${WAZUH_PATH}" ]; then
-            WAZUH_PATH="$(cd ${DIR_NAME}/..; pwd)"
-        fi
-        PYTHON_SCRIPT="${DIR_NAME}/${SCRIPT_NAME}.py"
-    ;;
-esac
-${WAZUH_PATH}/${WPYTHON_BIN} ${PYTHON_SCRIPT} "$@"
-EOF
-
+wget -O "$TELEGRAM_WRAPPER_FILE" https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-telegram
 cat > "$TELEGRAM_PY_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
 import sys
@@ -298,25 +270,16 @@ import requests
 BOT_TOKEN = "${TELEGRAM_TOKEN}"
 CHAT_ID = "${TELEGRAM_CHAT_ID}"
 
-
 def value(data, path, default="-"):
     current = data
-
     for key in path.split("."):
         if isinstance(current, dict) and key in current:
             current = current[key]
         else:
             return default
-
     return current if current not in [None, ""] else default
 
-
 def get_misp(alert, key, default="-"):
-    """
-    รองรับทั้ง:
-    misp.value
-    data.misp.value
-    """
     v = value(alert, f"misp.{key}", default)
     if v != default:
         return v
@@ -327,10 +290,8 @@ def get_misp(alert, key, default="-"):
 
     return default
 
-
 def esc(text):
     return html.escape(str(text))
-
 
 try:
     alert_file = sys.argv[1]
@@ -341,7 +302,6 @@ try:
     rule_id = value(alert, "rule.id")
     level = value(alert, "rule.level")
     description = value(alert, "rule.description")
-
     agent_name = value(alert, "agent.name")
     agent_ip = value(alert, "agent.ip")
     location = value(alert, "location")
@@ -351,25 +311,7 @@ try:
     misp_value = get_misp(alert, "value")
     misp_event_id = get_misp(alert, "event_id")
 
-    try:
-        level_int = int(level)
-
-        if level_int >= 15:
-            icon = "🔴"
-        elif level_int >= 10:
-            icon = "🟠"
-        elif level_int >= 7:
-            icon = "🟡"
-        else:
-            icon = "🔵"
-
-    except Exception:
-        icon = "🚨"
-
-    full_log = esc(str(alert.get("full_log", "-")))[:1000]
-
-    message = f"""
-{icon} <b>Wazuh MISP Alert</b>
+    message = f"""🚨 <b>Wazuh MISP Alert</b>
 
 <b>Rule ID:</b> {esc(rule_id)}
 <b>Level:</b> {esc(level)}
@@ -383,9 +325,6 @@ try:
 <b>MISP Type:</b> {esc(misp_type)}
 <b>IOC:</b> {esc(misp_value)}
 <b>MISP Event ID:</b> {esc(misp_event_id)}
-
-<b>Full Log:</b>
-<pre>{full_log}</pre>
 """
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -394,7 +333,7 @@ try:
         "chat_id": CHAT_ID,
         "text": message,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": True
     }
 
     response = requests.post(url, json=payload, timeout=10)
@@ -405,7 +344,6 @@ try:
 except Exception as e:
     print(f"Telegram integration error: {e}")
 EOF
-
 chmod 750 "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
 chown root:wazuh "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
 
