@@ -293,19 +293,18 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_FIM_CONFIGURATION" '  <syscheck>
     <frequency>43200</frequency>
     <scan_on_start>yes</scan_on_start>
     <alert_new_files>yes</alert_new_files>
-    <client_buffer_size>200000</client_buffer_size>
+    <client_buffer_size>300000</client_buffer_size>
 
-    <directories check_all="yes" realtime="yes" report_changes="yes">/etc</directories>
     <directories check_all="yes" realtime="yes" report_changes="yes">/usr/bin</directories>
     <directories check_all="yes" realtime="yes" report_changes="yes">/usr/sbin</directories>
     <directories check_all="yes" realtime="yes" report_changes="yes">/var/www</directories>
-    <directories check_all="yes" realtime="yes" report_changes="yes">/home</directories>
 
     <ignore>/etc/mtab</ignore>
     <ignore>/etc/hosts.deny</ignore>
     <ignore>/etc/mail/statistics</ignore>
     <ignore>/etc/random-seed</ignore>
     <ignore>/etc/.java</ignore>
+    <ignore>/home</ignore>
   </syscheck>'
 
 echo "[7/12] Add MISP integration to ossec.conf"
@@ -498,14 +497,16 @@ cat > "$WINDOWS_FIM_FILE" <<'EOF'
   <scan_on_start>yes</scan_on_start>
   <alert_new_files>yes</alert_new_files>
 
-  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Users</directories>
-  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Program Files</directories>
-  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Program Files (x86)</directories>
-  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Windows\System32</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Windows\System32\drivers\etc</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Windows\System32\WindowsPowerShell\v1.0\Modules</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup</directories>
+  <directories check_all="yes" realtime="yes" report_changes="yes">C:\Users\Public</directories>
 
+  <ignore>C:\Users\*\AppData</ignore>
   <ignore>C:\Windows\Temp</ignore>
   <ignore>C:\Windows\Prefetch</ignore>
   <ignore>C:\Windows\WinSxS</ignore>
+  <ignore>C:\Windows\SoftwareDistribution</ignore>
 </syscheck>
 EOF
 
