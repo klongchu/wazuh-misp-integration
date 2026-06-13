@@ -16,7 +16,6 @@ def test_server_installer_creates_custom_misp_conf_for_warninglist_setting():
     assert 'MISP_CONFIG_FILE="$INTEGRATION_DIR/custom-misp.conf"' in text
     assert 'prompt_tty IGNORE_WARNINGLIST "Ignore MISP warninglist hits? [Y/n] (default: yes): "' in text
     assert 'IGNORE_WARNINGLIST_BOOL="true"' in text
-    assert '"$MISP_CONFIG_FILE"' in text
     assert 'cat > "$MISP_CONFIG_FILE" <<EOF' in text
     assert 'IGNORE_WARNINGLIST=$IGNORE_WARNINGLIST_BOOL' in text
     assert 'chmod 640 "$MISP_CONFIG_FILE"' in text
@@ -38,104 +37,26 @@ def test_installer_uses_exporter_virtualenv_and_cron():
     assert 'for list_file in malware-hashes misp-ip misp-domain misp-url; do' in text
 
 
-def test_installer_adds_cdb_lookup_rules():
+def test_installer_patches_sysmon_event_levels():
+    text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
+    assert 'SYSMON_RULES_FILE="$OSSEC_DIR/ruleset/rules/0595-win-sysmon_rules.xml"' in text
+    assert 'backup_file_if_exists "$SYSMON_RULES_FILE"' in text
+    assert 'Patch Sysmon - Event 3 and Sysmon - Event 22 levels' in text
+    assert 're.sub' in text
+    assert '61603' in text
+    assert '61650' in text
+    assert 'Failed to patch Sysmon - Event 3 level' in text
+    assert 'Failed to patch Sysmon - Event 22 level' in text
+
+
+def test_installer_adds_cdb_lookup_rules_without_rule_include():
     text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
     assert 'misp_cdb_rules.xml' in text
     assert '<list field="win.eventdata.queryName" lookup="match_key">etc/lists/misp-domain</list>' in text
     assert '<list field="win.eventdata.destinationIp" lookup="match_key">etc/lists/misp-ip</list>' in text
     assert 'MISP CDB Domain IOC matched' in text
     assert 'MISP CDB IP IOC matched' in text
-    assert 'sysmon_event_22' in text
-    assert 'sysmon_event_3' in text
     assert 'chown root:wazuh "$CDB_RULE_FILE"' in text
     assert 'chmod 660 "$CDB_RULE_FILE"' in text
     assert 'rule_include' not in text
-    assert 'upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_CDB_RULES"' not in text
     assert '<rule_include>' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text
-    assert 'rule_include' not in text

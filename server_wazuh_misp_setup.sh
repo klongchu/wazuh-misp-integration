@@ -28,6 +28,7 @@ AR_DIR="$OSSEC_DIR/active-response/bin"
 BACKUP_DIR="/root/wazuh-misp-backup-$(date +%F-%H%M%S)"
 MISP_RULE_FILE="$RULE_DIR/misp.xml"
 CDB_RULE_FILE="$RULE_DIR/misp_cdb_rules.xml"
+SYSMON_RULES_FILE="$OSSEC_DIR/ruleset/rules/0595-win-sysmon_rules.xml"
 TELEGRAM_WRAPPER_FILE="$INTEGRATION_DIR/custom-telegram"
 TELEGRAM_PY_FILE="$INTEGRATION_DIR/custom-telegram.py"
 MISP_CONFIG_FILE="$INTEGRATION_DIR/custom-misp.conf"
@@ -597,39 +598,32 @@ cat <<EOF
 [INFO] Apply file to Windows agent ossec.conf under <ossec_config>
 EOF
 
-echo "[11/12] Verify/Create Sysmon Event ID 22 rule"
-LOCAL_RULES="$RULE_DIR/local_rules.xml"
+echo "[11/12] Patch Sysmon - Event 3 and Sysmon - Event 22 levels"
+backup_file_if_exists "$SYSMON_RULES_FILE"
+python3 - <<'PY' "$SYSMON_RULES_FILE"
+from pathlib import Path
+import re
+import sys
 
-if grep -R "sysmon_event_22" /var/ossec/ruleset/rules/ "$RULE_DIR" >/dev/null 2>&1; then
-  echo "[OK] Sysmon Event ID 22 rule already exists"
-else
-  echo "[INFO] Missing sysmon_event_22 rule. Adding Rule ID 61650 to local_rules.xml"
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+patterns = [
+    (r'(<rule id="61603" level=")0(">)', r'\g<1>4\g<2>'),
+    (r'(<rule id="61650" level=")0(">)', r'\g<1>4\g<2>'),
+]
+updated = text
+for pattern, replacement in patterns:
+    updated = re.sub(pattern, replacement, updated)
+path.write_text(updated, encoding='utf-8')
+PY
 
-  if [ ! -f "$LOCAL_RULES" ]; then
-cat > "$LOCAL_RULES" <<'EOF'
-<group name="local,syslog,sshd,">
-</group>
-EOF
-  fi
-
-  cp "$LOCAL_RULES" "$BACKUP_DIR/local_rules.xml.bak"
-
-  if grep -q 'id="61650"' "$LOCAL_RULES"; then
-    echo "[SKIP] Rule ID 61650 already exists in local_rules.xml"
-  else
-    sed -i '/<\/group>/i\
-  <rule id="61650" level="8" overwrite="yes">\
-    <if_sid>61600</if_sid>\
-    <field name="win.system.eventID">^22$</field>\
-    <description>Sysmon - Event ID 22: DNSEvent (DNS query)</description>\
-    <options>no_full_log</options>\
-    <group>sysmon_event_22,</group>\
-  </rule>' "$LOCAL_RULES"
-
-    chown root:wazuh "$LOCAL_RULES"
-    chmod 640 "$LOCAL_RULES"
-    echo "[OK] Added Rule ID 61650"
-  fi
+if ! grep -q '<rule id="61603" level="4">' "$SYSMON_RULES_FILE"; then
+  echo "[ERROR] Failed to patch Sysmon - Event 3 level"
+  exit 1
+fi
+if ! grep -q '<rule id="61650" level="4">' "$SYSMON_RULES_FILE"; then
+  echo "[ERROR] Failed to patch Sysmon - Event 22 level"
+  exit 1
 fi
 
 echo "[12/12] Validate and restart Wazuh"
