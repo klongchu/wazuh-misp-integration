@@ -24,14 +24,15 @@ def test_server_installer_creates_custom_misp_conf_for_warninglist_setting():
     assert 'sed -i "s|^IGNORE_WARNINGLIST *=.*|' not in text
 
 
-def test_installer_mentions_exporter_and_cron():
+def test_installer_uses_exporter_virtualenv_and_cron():
     text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
-    assert 'export_misp_to_wazuh.py' in text
-    assert 'python3 -m pip install --no-input pymisp requests' in text or 'pip install pymisp requests' in text
+    assert 'apt install -y curl wget python3 python3-pip python3-venv python3-full jq net-tools cron' in text
+    assert 'python3 -m venv "$INTEGRATION_DIR/export-misp-venv"' in text
+    assert '"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input pymisp requests' in text
+    assert 'python3 -m pip install --no-input pymisp requests' not in text
+    assert 'pip3 install --no-input pymisp requests' not in text
+    assert '--break-system-packages' not in text
     assert '/etc/cron.d/wazuh-misp-cdb-export' in text
-    assert '/var/ossec/etc/lists/malware-hashes' in text
-    assert '/var/ossec/etc/lists/misp-ip' in text
-    assert '/var/ossec/etc/lists/misp-domain' in text
-    assert '/var/ossec/etc/lists/misp-url' in text
-    assert 'systemctl enable --now cron || true' in text
-    assert 'MISP_BASE_URL="$MISP_URL/attributes/restSearch/" MISP_API_KEY="$MISP_API_KEY" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists' in text
+    assert '"/var/ossec/integrations/export-misp-venv/bin/python" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf' in text
+    assert '"$INTEGRATION_DIR/export-misp-venv/bin/python" "$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE"' in text
+    assert 'for list_file in malware-hashes misp-ip misp-domain misp-url; do' in text

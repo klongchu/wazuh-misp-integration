@@ -185,8 +185,7 @@ fi
 
 echo "[1/12] Install packages"
 apt update
-apt install -y curl wget python3 python3-pip jq net-tools cron
-python3 -m pip install --no-input pymisp requests
+apt install -y curl wget python3 python3-pip python3-venv python3-full jq net-tools cron
 
 echo "[2/12] Install export_misp_to_wazuh.py"
 if [ -f "$SCRIPT_DIR/export_misp_to_wazuh.py" ]; then
@@ -197,10 +196,14 @@ fi
 chmod 750 "$INTEGRATION_DIR/export_misp_to_wazuh.py"
 chown root:wazuh "$INTEGRATION_DIR/export_misp_to_wazuh.py"
 
+export_misp_venv="$INTEGRATION_DIR/export-misp-venv"
+python3 -m venv "$INTEGRATION_DIR/export-misp-venv"
+"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input pymisp requests
+
 cat > /etc/cron.d/wazuh-misp-cdb-export <<EOF
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-*/30 * * * * root MISP_BASE_URL="$MISP_URL/attributes/restSearch/" MISP_API_KEY="$MISP_API_KEY" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf >> /var/ossec/logs/integrations.log 2>&1
+*/30 * * * * root MISP_BASE_URL="$MISP_URL/attributes/restSearch/" MISP_API_KEY="$MISP_API_KEY" "/var/ossec/integrations/export-misp-venv/bin/python" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf >> /var/ossec/logs/integrations.log 2>&1
 EOF
 chmod 644 /etc/cron.d/wazuh-misp-cdb-export
 systemctl enable --now cron || true
@@ -219,7 +222,7 @@ fi
 
 export MISP_BASE_URL="$MISP_URL/attributes/restSearch/"
 export MISP_API_KEY="$MISP_API_KEY"
-"$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE" || true
+"$INTEGRATION_DIR/export-misp-venv/bin/python" "$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE" || true
 
 
 echo "[2/12] Install custom-misp"
