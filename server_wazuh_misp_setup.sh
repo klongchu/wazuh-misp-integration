@@ -185,7 +185,42 @@ fi
 
 echo "[1/12] Install packages"
 apt update
-apt install -y curl wget python3 python3-pip jq net-tools
+apt install -y curl wget python3 python3-pip jq net-tools cron
+python3 -m pip install --no-input pymisp requests
+
+echo "[2/12] Install export_misp_to_wazuh.py"
+if [ -f "$SCRIPT_DIR/export_misp_to_wazuh.py" ]; then
+  cp "$SCRIPT_DIR/export_misp_to_wazuh.py" "$INTEGRATION_DIR/export_misp_to_wazuh.py"
+else
+  wget -O "$INTEGRATION_DIR/export_misp_to_wazuh.py" https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/export_misp_to_wazuh.py
+fi
+chmod 750 "$INTEGRATION_DIR/export_misp_to_wazuh.py"
+chown root:wazuh "$INTEGRATION_DIR/export_misp_to_wazuh.py"
+
+cat > /etc/cron.d/wazuh-misp-cdb-export <<EOF
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/30 * * * * root MISP_BASE_URL="$MISP_URL/attributes/restSearch/" MISP_API_KEY="$MISP_API_KEY" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf >> /var/ossec/logs/integrations.log 2>&1
+EOF
+chmod 644 /etc/cron.d/wazuh-misp-cdb-export
+systemctl enable --now cron || true
+
+rm -f /var/ossec/etc/lists/malware-hashes /var/ossec/etc/lists/misp-ip /var/ossec/etc/lists/misp-domain /var/ossec/etc/lists/misp-url
+
+for list_file in malware-hashes misp-ip misp-domain misp-url; do
+  touch "$LIST_DIR/$list_file"
+  chown wazuh:wazuh "$LIST_DIR/$list_file"
+  chmod 660 "$LIST_DIR/$list_file"
+done
+
+if ! grep -q "etc/lists/malware-hashes" "$OSSEC_CONF"; then
+  sed -i '/<ruleset>/a\    <list>etc/lists/malware-hashes</list>\n    <list>etc/lists/misp-ip</list>\n    <list>etc/lists/misp-domain</list>\n    <list>etc/lists/misp-url</list>' "$OSSEC_CONF"
+fi
+
+export MISP_BASE_URL="$MISP_URL/attributes/restSearch/"
+export MISP_API_KEY="$MISP_API_KEY"
+"$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE" || true
+
 
 echo "[2/12] Install custom-misp"
 cd "$INTEGRATION_DIR"

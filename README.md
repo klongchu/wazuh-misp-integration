@@ -269,6 +269,31 @@ sudo tail -f /var/ossec/logs/ossec.log
 
 ถ้ามี alert ที่ตรง IOC จะเห็นการเรียก integration `custom-misp` และถ้าเปิด Telegram จะมีข้อความแจ้งเตือนเข้า Telegram
 
+## ตรวจสอบ MISP CDB List Export
+
+บน Wazuh Manager ตรวจสอบไฟล์ CDB list ที่ export จาก MISP:
+
+```bash
+sudo cat /var/ossec/etc/lists/malware-hashes
+sudo cat /var/ossec/etc/lists/misp-ip
+sudo cat /var/ossec/etc/lists/misp-domain
+sudo cat /var/ossec/etc/lists/misp-url
+sudo grep -n '<list>etc/lists/' /var/ossec/etc/ossec.conf
+sudo tail -f /var/ossec/logs/integrations.log
+```
+
+ไฟล์ cron สำหรับ refresh อัตโนมัติ:
+
+```bash
+sudo cat /etc/cron.d/wazuh-misp-cdb-export
+```
+
+Exporter อยู่ที่:
+
+```bash
+sudo ls -l /var/ossec/integrations/export_misp_to_wazuh.py
+```
+
 ## ทดสอบ Windows Firewall Block แบบ Manual
 
 บน Windows client ใช้ PowerShell Run as Administrator:
