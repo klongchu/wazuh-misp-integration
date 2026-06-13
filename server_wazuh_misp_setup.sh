@@ -206,7 +206,7 @@ python3 -m venv "$INTEGRATION_DIR/export-misp-venv"
 cat > /etc/cron.d/wazuh-misp-cdb-export <<EOF
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-*/30 * * * * root MISP_BASE_URL="$MISP_URL/attributes/restSearch/" MISP_API_KEY="$MISP_API_KEY" "/var/ossec/integrations/export-misp-venv/bin/python" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf >> /var/ossec/logs/integrations.log 2>&1
+*/30 * * * * root MISP_BASE_URL="$MISP_URL" MISP_API_KEY="$MISP_API_KEY" "/var/ossec/integrations/export-misp-venv/bin/python" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf >> /var/ossec/logs/integrations.log 2>&1
 EOF
 chmod 644 /etc/cron.d/wazuh-misp-cdb-export
 systemctl enable --now cron || true
@@ -223,7 +223,7 @@ if ! grep -q "etc/lists/malware-hashes" "$OSSEC_CONF"; then
   sed -i '/<ruleset>/a\    <list>etc/lists/malware-hashes</list>\n    <list>etc/lists/misp-ip</list>\n    <list>etc/lists/misp-domain</list>\n    <list>etc/lists/misp-url</list>' "$OSSEC_CONF"
 fi
 
-export MISP_BASE_URL="$MISP_URL/attributes/restSearch/"
+export MISP_BASE_URL="$MISP_URL"
 export MISP_API_KEY="$MISP_API_KEY"
 "$INTEGRATION_DIR/export-misp-venv/bin/python" "$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE" || true
 
@@ -238,7 +238,7 @@ cat > "$CDB_RULE_FILE" <<'EOF'
   </rule>
 
   <rule id="100901" level="12">
-    <if_group>sysmon_event_3</if_group>
+    <field name="win.system.eventID">^3$</field>
     <list field="win.eventdata.destinationIp" lookup="match_key">etc/lists/misp-ip</list>
     <description>MISP CDB IP IOC matched: $(win.eventdata.destinationIp)</description>
     <group>misp_ip,cdb_ioc,network,</group>

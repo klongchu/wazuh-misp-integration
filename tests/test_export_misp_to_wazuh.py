@@ -10,7 +10,13 @@ spec.loader.exec_module(exporter)
 
 # Now, access the functions through the loaded module
 map_attribute_to_list = exporter.map_attribute_to_list
+normalize_misp_url = exporter.normalize_misp_url
 write_lists = exporter.write_lists # Also expose write_lists for Task 2
+
+
+def test_normalize_misp_url_strips_restsearch_path():
+    assert normalize_misp_url("https://misp.example.com/attributes/restSearch/") == "https://misp.example.com"
+    assert normalize_misp_url("https://misp.example.com/") == "https://misp.example.com"
 
 
 def test_map_attribute_to_list_routes_ioc_types():

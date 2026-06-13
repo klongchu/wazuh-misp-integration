@@ -22,6 +22,14 @@ SUPPORTED_TYPES = {
 }
 
 
+def normalize_misp_url(url):
+    normalized = str(url).strip().rstrip("/")
+    suffix = "/attributes/restSearch"
+    if normalized.endswith(suffix):
+        return normalized[: -len(suffix)]
+    return normalized
+
+
 def normalize_value(value):
     value = str(value).strip().lower()
     value = value.rstrip(".")
@@ -67,7 +75,8 @@ def fetch_attributes(url, key, verify_ssl=False):
     if PyMISP is None:
         raise RuntimeError("PyMISP is required. Install with: pip3 install pymisp")
 
-    misp = PyMISP(url.rstrip("/"), key, ssl=verify_ssl)
+    normalized_url = normalize_misp_url(url)
+    misp = PyMISP(normalized_url, key, ssl=verify_ssl)
     result = misp.search(
         controller="attributes",
         type_attribute=list(SUPPORTED_TYPES),
