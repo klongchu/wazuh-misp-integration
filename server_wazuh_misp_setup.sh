@@ -29,6 +29,7 @@ BACKUP_DIR="/root/wazuh-misp-backup-$(date +%F-%H%M%S)"
 MISP_RULE_FILE="$RULE_DIR/misp.xml"
 TELEGRAM_WRAPPER_FILE="$INTEGRATION_DIR/custom-telegram"
 TELEGRAM_PY_FILE="$INTEGRATION_DIR/custom-telegram.py"
+MISP_CONFIG_FILE="$INTEGRATION_DIR/custom-misp.conf"
 LINUX_AR_FILE="$AR_DIR/block-misp-ioc.sh"
 WINDOWS_AR_DIR="/root/wazuh-windows-active-response"
 WINDOWS_AR_BAT="$WINDOWS_AR_DIR/action-script.bat"
@@ -60,7 +61,7 @@ if [ -f "$ENV_FILE" ]; then
   fi
 
   if [[ "$RECONFIGURE_ENV" =~ ^[Yy]$ ]]; then
-    unset SET_HOSTNAME MISP_URL MISP_API_KEY TELEGRAM_TOKEN TELEGRAM_CHAT_ID ENABLE_ACTIVE_RESPONSE ACTIVE_RESPONSE_TIMEOUT
+    unset SET_HOSTNAME MISP_URL MISP_API_KEY TELEGRAM_TOKEN TELEGRAM_CHAT_ID ENABLE_ACTIVE_RESPONSE ACTIVE_RESPONSE_TIMEOUT IGNORE_WARNINGLIST
   fi
 fi
 
@@ -85,13 +86,23 @@ fi
 if [ -z "$ACTIVE_RESPONSE_TIMEOUT" ]; then
   prompt_tty ACTIVE_RESPONSE_TIMEOUT "Active Response Timeout (default: 600): "
 fi
+if [ -z "$IGNORE_WARNINGLIST" ]; then
+  prompt_tty IGNORE_WARNINGLIST "Ignore MISP warninglist hits? [Y/n] (default: yes): "
+fi
 
 echo ""
 
 MISP_URL="${MISP_URL%/}"
 ENABLE_ACTIVE_RESPONSE="${ENABLE_ACTIVE_RESPONSE:-yes}"
 ACTIVE_RESPONSE_TIMEOUT="${ACTIVE_RESPONSE_TIMEOUT:-600}"
+IGNORE_WARNINGLIST="${IGNORE_WARNINGLIST:-yes}"
 SET_HOSTNAME="${SET_HOSTNAME:-N}"
+
+# Convert to boolean string for custom-misp.conf
+IGNORE_WARNINGLIST_BOOL="false"
+if [[ "$IGNORE_WARNINGLIST" =~ ^[Yy]([Ee][Ss])?$|^1$|^true$|^on$ ]]; then
+  IGNORE_WARNINGLIST_BOOL="true"
+fi
 
 if [ -z "$MISP_URL" ] || [ -z "$MISP_API_KEY" ] || [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
   echo "[ERROR] MISP URL, API Key, Telegram Token, Telegram Chat ID ห้ามว่าง"
@@ -106,6 +117,7 @@ TELEGRAM_TOKEN="$TELEGRAM_TOKEN"
 TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"
 ENABLE_ACTIVE_RESPONSE="$ENABLE_ACTIVE_RESPONSE"
 ACTIVE_RESPONSE_TIMEOUT="$ACTIVE_RESPONSE_TIMEOUT"
+IGNORE_WARNINGLIST="$IGNORE_WARNINGLIST_BOOL"
 EOF
 chmod 600 "$ENV_FILE"
 echo "[INFO] Save config to $ENV_FILE"
@@ -125,6 +137,7 @@ fi
 
 EXISTING_FILES=(
   "$INTEGRATION_DIR/custom-misp"
+  "$MISP_CONFIG_FILE"
   "$MISP_RULE_FILE"
   "$TELEGRAM_WRAPPER_FILE"
   "$TELEGRAM_PY_FILE"
@@ -195,6 +208,13 @@ chown root:wazuh custom-misp
 echo "[3/12] Configure custom-misp"
 sed -i "s|^MISP_BASE_URL *=.*|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|g" custom-misp || true
 sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
+
+cat > "$MISP_CONFIG_FILE" <<EOF
+# custom-misp runtime configuration
+IGNORE_WARNINGLIST=$IGNORE_WARNINGLIST_BOOL
+EOF
+chmod 640 "$MISP_CONFIG_FILE"
+chown root:wazuh "$MISP_CONFIG_FILE"
 
 echo "[4/12] Create MISP rules"
 cat > "$MISP_RULE_FILE" <<'EOF'

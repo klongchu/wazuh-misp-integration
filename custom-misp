@@ -12,10 +12,41 @@ from requests.exceptions import ConnectionError, Timeout, RequestException
 pwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 socket_addr = f"{pwd}/queue/sockets/queue"
 LOG_FILE = "/var/ossec/logs/integrations.log"
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "custom-misp.conf")
+
+
+def parse_bool(value, default=False):
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def load_config(path=CONFIG_FILE):
+    config = {}
+    try:
+        with open(path, "r", encoding="utf-8") as config_file:
+            for line in config_file:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                config[key.strip()] = value.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return config
+
 
 # MISP configuration
-MISP_BASE_URL = os.getenv("MISP_BASE_URL", "https://{IP/Domain MISP}/attributes/restSearch/").strip()
-MISP_API_KEY = os.getenv("MISP_API_KEY", "API Key").strip()
+CONFIG = load_config()
+MISP_BASE_URL = CONFIG.get("MISP_BASE_URL", os.getenv("MISP_BASE_URL", "https://{IP/Domain MISP}/attributes/restSearch/")).strip()
+MISP_API_KEY = CONFIG.get("MISP_API_KEY", os.getenv("MISP_API_KEY", "API Key")).strip()
+IGNORE_WARNINGLIST = parse_bool(CONFIG.get("IGNORE_WARNINGLIST", os.getenv("IGNORE_WARNINGLIST", "true")), default=True)
 
 MISP_HEADERS = {
     "Content-Type": "application/json",
@@ -165,7 +196,7 @@ def handle_misp_response(misp_api_response, alert, alert_output):
     valid_attributes = []
 
     for attribute in attributes:
-        if is_warninglist_hit(attribute):
+        if IGNORE_WARNINGLIST and is_warninglist_hit(attribute):
             continue
 
         valid_attributes.append(attribute)
