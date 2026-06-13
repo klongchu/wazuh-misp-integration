@@ -201,7 +201,7 @@ chown root:wazuh "$INTEGRATION_DIR/export_misp_to_wazuh.py"
 
 export_misp_venv="$INTEGRATION_DIR/export-misp-venv"
 python3 -m venv "$INTEGRATION_DIR/export-misp-venv"
-"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input pymisp requests
+"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input requests
 
 cat > /etc/cron.d/wazuh-misp-cdb-export <<EOF
 SHELL=/bin/bash

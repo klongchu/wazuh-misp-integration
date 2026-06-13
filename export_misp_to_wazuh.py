@@ -4,10 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-try:
-    from pymisp import PyMISP
-except ImportError:  # pragma: no cover - exercised on Wazuh host, not unit tests
-    PyMISP = None
+import requests
 
 LIST_NAMES = ("malware-hashes", "misp-ip", "misp-domain", "misp-url")
 SUPPORTED_TYPES = {
@@ -72,18 +69,27 @@ def read_config(path):
 
 
 def fetch_attributes(url, key, verify_ssl=False):
-    if PyMISP is None:
-        raise RuntimeError("PyMISP is required. Install with: pip3 install pymisp")
-
     normalized_url = normalize_misp_url(url)
-    misp = PyMISP(normalized_url, key, ssl=verify_ssl)
-    result = misp.search(
-        controller="attributes",
-        type_attribute=list(SUPPORTED_TYPES),
-        to_ids=True,
-        pythonify=False,
+    response = requests.post(
+        f"{normalized_url}/attributes/restSearch",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": key,
+            "Accept": "application/json",
+        },
+        json={
+            "type": sorted(SUPPORTED_TYPES),
+            "to_ids": 1,
+            "includeWarninglistHits": True,
+        },
+        verify=verify_ssl,
+        timeout=30,
     )
-    return result.get("Attribute", []) if isinstance(result, dict) else result
+    response.raise_for_status()
+    result = response.json()
+    return result.get("response", {}).get("Attribute", [])
+
+
 
 
 def build_lists(attributes):

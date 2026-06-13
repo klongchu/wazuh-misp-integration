@@ -44,9 +44,11 @@ def test_installer_uses_exporter_virtualenv_and_cron():
     text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
     assert 'apt install -y curl wget python3 python3-pip python3-venv python3-full jq net-tools cron' in text
     assert 'python3 -m venv "$INTEGRATION_DIR/export-misp-venv"' in text
-    assert '"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input pymisp requests' in text
+    assert '"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input requests' in text
+    assert '"$INTEGRATION_DIR/export-misp-venv/bin/pip" install --no-input pymisp requests' not in text
     assert 'python3 -m pip install --no-input pymisp requests' not in text
     assert 'pip3 install --no-input pymisp requests' not in text
+    assert 'pymisp' not in text
     assert '--break-system-packages' not in text
     assert '/etc/cron.d/wazuh-misp-cdb-export' in text
     assert '"/var/ossec/integrations/export-misp-venv/bin/python" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf' in text
