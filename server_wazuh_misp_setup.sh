@@ -312,12 +312,7 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
   </integration>'
 
 echo "[8/12] Add Telegram custom integration"
-if [ -f "$SCRIPT_DIR/custom-telegram" ]; then
-  cp "$SCRIPT_DIR/custom-telegram" "$TELEGRAM_WRAPPER_FILE"
-else
-  wget -O "$TELEGRAM_WRAPPER_FILE" https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-telegram
-fi
-cat > "$TELEGRAM_PY_FILE" <<EOF
+cat > "$TELEGRAM_WRAPPER_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
 import sys
 import os
@@ -402,14 +397,17 @@ try:
 except Exception as e:
     print(f"Telegram integration error: {e}")
 EOF
-chmod 750 "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
-chown root:wazuh "$TELEGRAM_WRAPPER_FILE" "$TELEGRAM_PY_FILE"
+chmod 750 "$TELEGRAM_WRAPPER_FILE"
+chown root:wazuh "$TELEGRAM_WRAPPER_FILE"
+rm -f "$TELEGRAM_PY_FILE"
 
 upsert_managed_block "$OSSEC_CONF" "WAZUH_TELEGRAM_INTEGRATION" '  <integration>
     <name>custom-telegram</name>
     <level>12</level>
     <alert_format>json</alert_format>
   </integration>'
+
+echo "[INFO] Telegram Integration: $TELEGRAM_WRAPPER_FILE"
 
 echo "[9/12] Create Linux Active Response script"
 cat > "$LINUX_AR_FILE" <<'EOF'
@@ -567,7 +565,7 @@ echo "Backup: $BACKUP_DIR"
 echo ""
 echo "Rules: $MISP_RULE_FILE"
 echo "MISP Integration: $INTEGRATION_DIR/custom-misp"
-echo "Telegram Integration: $TELEGRAM_PY_FILE"
+echo "Telegram Integration: $TELEGRAM_WRAPPER_FILE"
 echo "Linux Active Response: $LINUX_AR_FILE"
 echo "Windows AR files: $WINDOWS_AR_DIR/"
 echo ""
