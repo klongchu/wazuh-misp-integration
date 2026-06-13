@@ -274,6 +274,8 @@ sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp |
 
 cat > "$MISP_CONFIG_FILE" <<EOF
 # custom-misp runtime configuration
+MISP_BASE_URL=$MISP_URL
+MISP_API_KEY=$MISP_API_KEY
 IGNORE_WARNINGLIST=$IGNORE_WARNINGLIST_BOOL
 EOF
 chmod 640 "$MISP_CONFIG_FILE"
