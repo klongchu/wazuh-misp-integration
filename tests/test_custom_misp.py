@@ -11,6 +11,15 @@ def test_custom_misp_supports_ignore_warninglist_config_file_with_env_fallback()
     assert 'if IGNORE_WARNINGLIST and is_warninglist_hit(attribute):' in text
 
 
+def test_custom_misp_defines_get_nested_for_alert_parsing():
+    text = Path('custom-misp').read_text(encoding='utf-8')
+    assert 'def get_nested(data, *keys):' in text
+    assert 'current = data' in text
+    assert 'current = current.get(key)' in text
+    assert 'return None' in text
+    assert 'win_eventdata = get_nested(alert, "data", "win", "eventdata")' in text
+
+
 def test_server_installer_creates_custom_misp_conf_for_warninglist_setting():
     text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
     assert 'MISP_CONFIG_FILE="$INTEGRATION_DIR/custom-misp.conf"' in text

@@ -55,6 +55,17 @@ MISP_HEADERS = {
 }
 
 
+def get_nested(data, *keys):
+    current = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+        if current is None:
+            return None
+    return current
+
+
 def send_event(msg, agent=None):
     if not agent or agent.get("id") == "000":
         message = f"1:misp:{json.dumps(msg)}"
