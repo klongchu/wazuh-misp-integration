@@ -36,3 +36,17 @@ def test_installer_uses_exporter_virtualenv_and_cron():
     assert '"/var/ossec/integrations/export-misp-venv/bin/python" /var/ossec/integrations/export_misp_to_wazuh.py --output-dir /var/ossec/etc/lists --config /var/ossec/integrations/custom-misp.conf' in text
     assert '"$INTEGRATION_DIR/export-misp-venv/bin/python" "$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE"' in text
     assert 'for list_file in malware-hashes misp-ip misp-domain misp-url; do' in text
+
+
+def test_installer_adds_cdb_lookup_rules():
+    text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
+    assert 'misp_cdb_rules.xml' in text
+    assert '<list field="win.eventdata.queryName" lookup="match_key">etc/lists/misp-domain</list>' in text
+    assert '<list field="win.eventdata.destinationIp" lookup="match_key">etc/lists/misp-ip</list>' in text
+    assert 'MISP CDB Domain IOC matched' in text
+    assert 'MISP CDB IP IOC matched' in text
+    assert 'sysmon_event_22' in text
+    assert 'sysmon_event_3' in text
+    assert 'chown root:wazuh "$CDB_RULE_FILE"' in text
+    assert 'chmod 660 "$CDB_RULE_FILE"' in text
+    assert 'upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_CDB_RULES"' in text

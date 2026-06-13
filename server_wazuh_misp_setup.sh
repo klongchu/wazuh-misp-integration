@@ -27,6 +27,7 @@ AR_DIR="$OSSEC_DIR/active-response/bin"
 
 BACKUP_DIR="/root/wazuh-misp-backup-$(date +%F-%H%M%S)"
 MISP_RULE_FILE="$RULE_DIR/misp.xml"
+CDB_RULE_FILE="$RULE_DIR/misp_cdb_rules.xml"
 TELEGRAM_WRAPPER_FILE="$INTEGRATION_DIR/custom-telegram"
 TELEGRAM_PY_FILE="$INTEGRATION_DIR/custom-telegram.py"
 MISP_CONFIG_FILE="$INTEGRATION_DIR/custom-misp.conf"
@@ -139,6 +140,7 @@ EXISTING_FILES=(
   "$INTEGRATION_DIR/custom-misp"
   "$MISP_CONFIG_FILE"
   "$MISP_RULE_FILE"
+  "$CDB_RULE_FILE"
   "$TELEGRAM_WRAPPER_FILE"
   "$TELEGRAM_PY_FILE"
   "$LINUX_AR_FILE"
@@ -223,6 +225,29 @@ fi
 export MISP_BASE_URL="$MISP_URL/attributes/restSearch/"
 export MISP_API_KEY="$MISP_API_KEY"
 "$INTEGRATION_DIR/export-misp-venv/bin/python" "$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE" || true
+
+cat > "$CDB_RULE_FILE" <<'EOF'
+<group name="misp,cdb,ioc,">
+
+  <rule id="100900" level="12">
+    <if_group>sysmon_event_22</if_group>
+    <list field="win.eventdata.queryName" lookup="match_key">etc/lists/misp-domain</list>
+    <description>MISP CDB Domain IOC matched: $(win.eventdata.queryName)</description>
+    <group>misp_domain,cdb_ioc,dns,</group>
+  </rule>
+
+  <rule id="100901" level="12">
+    <if_group>sysmon_event_3</if_group>
+    <list field="win.eventdata.destinationIp" lookup="match_key">etc/lists/misp-ip</list>
+    <description>MISP CDB IP IOC matched: $(win.eventdata.destinationIp)</description>
+    <group>misp_ip,cdb_ioc,network,</group>
+  </rule>
+
+</group>
+EOF
+chown root:wazuh "$CDB_RULE_FILE"
+chmod 660 "$CDB_RULE_FILE"
+upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_CDB_RULES" '  <rule_include>etc/rules/misp_cdb_rules.xml</rule_include>'
 
 
 echo "[2/12] Install custom-misp"
