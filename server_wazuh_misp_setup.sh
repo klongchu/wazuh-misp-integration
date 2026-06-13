@@ -247,7 +247,6 @@ cat > "$CDB_RULE_FILE" <<'EOF'
 EOF
 chown root:wazuh "$CDB_RULE_FILE"
 chmod 660 "$CDB_RULE_FILE"
-upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_CDB_RULES" '  <rule_include>etc/rules/misp_cdb_rules.xml</rule_include>'
 
 
 echo "[2/12] Install custom-misp"
