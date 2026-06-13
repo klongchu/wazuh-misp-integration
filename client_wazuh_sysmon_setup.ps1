@@ -11,6 +11,7 @@
 #   Windows event channel wiring, and Windows Firewall active response.
 #
 # ===== Core Logic: shared validation, prompt flow, and helper functions =====
+# ===== Windows Role Logic begins below after helper definitions =====
 
 # Check for required commands
 if (-not (Get-Command msiexec.exe -ErrorAction SilentlyContinue)) {
