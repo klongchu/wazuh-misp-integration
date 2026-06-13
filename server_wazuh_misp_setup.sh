@@ -134,6 +134,7 @@ EXISTING_FILES=(
   "$ENV_FILE"
 )
 
+DELETE_ON_UPDATE_FILES=()
 FOUND_EXISTING=0
 for file in "${EXISTING_FILES[@]}"; do
   if [ -f "$file" ]; then
@@ -141,7 +142,9 @@ for file in "${EXISTING_FILES[@]}"; do
     echo "[INFO] พบไฟล์เดิม: $file"
     prompt_tty UPDATE_FILE "ต้องการอัปเดต $file หรือไม่? [y/N]: "
     UPDATE_FILE="${UPDATE_FILE:-N}"
-    if [[ ! "$UPDATE_FILE" =~ ^[Yy]$ ]]; then
+    if [[ "$UPDATE_FILE" =~ ^[Yy]$ ]]; then
+      DELETE_ON_UPDATE_FILES+=("$file")
+    else
       echo "[INFO] ยกเลิกการติดตั้ง"
       exit 0
     fi
@@ -159,6 +162,13 @@ cp "$OSSEC_CONF" "$BACKUP_DIR/ossec.conf.bak"
 for file in "${EXISTING_FILES[@]}"; do
   backup_file_if_exists "$file"
 done
+
+for file in "${DELETE_ON_UPDATE_FILES[@]}"; do
+  rm -f "$file"
+done
+if [ ${#DELETE_ON_UPDATE_FILES[@]} -gt 0 ]; then
+  echo "[INFO] ลบไฟล์เดิมแล้ว พร้อมสร้างใหม่"
+fi
 
 echo "[1/12] Install packages"
 apt update
