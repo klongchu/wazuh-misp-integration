@@ -20,6 +20,14 @@ def test_custom_misp_defines_get_nested_for_alert_parsing():
     assert 'win_eventdata = get_nested(alert, "data", "win", "eventdata")' in text
 
 
+def test_custom_misp_defines_log_helper_for_runtime_debugging():
+    text = Path('custom-misp').read_text(encoding='utf-8')
+    assert 'def log(message):' in text
+    assert 'with open(LOG_FILE, "a", encoding="utf-8") as log_file:' in text
+    assert 'log_file.write(f"{message}\\n")' in text
+    assert 'log(f"query rule_id={get_nested(alert, \'rule\', \'id\')} value={wazuh_event_param}")' in text
+
+
 def test_server_installer_creates_custom_misp_conf_for_warninglist_setting():
     text = Path('server_wazuh_misp_setup.sh').read_text(encoding='utf-8')
     assert 'MISP_CONFIG_FILE="$INTEGRATION_DIR/custom-misp.conf"' in text

@@ -66,6 +66,11 @@ def get_nested(data, *keys):
     return current
 
 
+def log(message):
+    with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+        log_file.write(f"{message}\n")
+
+
 def send_event(msg, agent=None):
     if not agent or agent.get("id") == "000":
         message = f"1:misp:{json.dumps(msg)}"
