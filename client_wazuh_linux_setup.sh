@@ -9,6 +9,7 @@
 #   and Linux-specific service/log handling.
 #
 # ===== Core Logic: shared validation and prompt flow =====
+# ===== Linux Role Logic begins below after shared helper sourcing =====
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
