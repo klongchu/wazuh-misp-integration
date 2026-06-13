@@ -23,13 +23,14 @@
 ## ไฟล์หลัก
 
 | ไฟล์ | ใช้ทำอะไร |
-|---|---|
-| `install-wazuh-misp-full.sh` | ติดตั้ง/ตั้งค่า Wazuh Manager ฝั่ง Server พร้อม MISP, Telegram, Active Response |
+| --- | --- |
+| `install-wazuh-misp-full.sh` | Entrypoint สำหรับ Wazuh Manager. เรียก `server_wazuh_misp_setup.sh` |
+| `server_wazuh_misp_setup.sh` | ติดตั้ง/ตั้งค่า Wazuh Manager ฝั่ง Server พร้อม MISP, Telegram, Active Response |
 | `client_wazuh_sysmon_setup.ps1` | ติดตั้ง Wazuh Agent + Sysmon + Windows Active Response ฝั่ง Windows Client |
 | `client_wazuh_linux_setup.sh` | ติดตั้ง Wazuh Agent + Active Response ฝั่ง Linux Client |
 | `Lab-Wazuh-Guild/` | เอกสาร Lab HTML และรูปประกอบ |
 
-> ใช้งานจริงแนะนำใช้ `install-wazuh-misp-full.sh`, `client_wazuh_sysmon_setup.ps1`, และ `client_wazuh_linux_setup.sh` เป็นหลัก
+> ใช้งานจริงแนะนำใช้ `server_wazuh_misp_setup.sh`, `client_wazuh_sysmon_setup.ps1`, และ `client_wazuh_linux_setup.sh` เป็นหลัก
 
 ## ข้อกำหนดก่อนติดตั้ง
 
@@ -55,6 +56,8 @@
 curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/install-wazuh-misp-full.sh | sudo bash
 ```
 
+> หมายเหตุ: `install-wazuh-misp-full.sh` ตอนนี้เป็น entrypoint ที่เรียก `server_wazuh_misp_setup.sh` อีกที
+
 ### Windows Client (PowerShell Run as Administrator)
 
 ```powershell
@@ -76,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/mai
 รันบน Ubuntu/Wazuh Manager:
 
 ```bash
-sudo bash install-wazuh-misp-full.sh
+sudo bash server_wazuh_misp_setup.sh
 ```
 
 สคริปต์จะถามค่าเหล่านี้:
@@ -234,7 +237,7 @@ Get-NetFirewallRule -DisplayName "Wazuh MISP Block *" | Format-Table DisplayName
 
 ## Log ที่ควรดู
 
-### Windows Client
+### Log ฝั่ง Windows Client
 
 ```text
 C:\Program Files (x86)\ossec-agent\active-response\active-response.log
@@ -289,10 +292,10 @@ Remove-NetFirewallRule -DisplayName $ruleName
 - Linux client script นี้อิง `apt` และ `iptables`; ถ้าใช้ distro/firewall backend อื่น อาจต้องปรับ script เพิ่ม
 - หากต้องการ unblock IP ที่ถูก block ไปแล้ว ให้ลบ firewall rule เดิมออกก่อน แล้วค่อยสร้าง allow rule ถ้าจำเป็น
 - ตัวอย่างบน Windows Client:
+
   ```powershell
   $Ioc = "192.168.1.100"
   $RuleBase = "Wazuh MISP Block $Ioc"
   Get-NetFirewallRule -DisplayName $RuleBase -ErrorAction SilentlyContinue | Remove-NetFirewallRule
   Get-NetFirewallRule -DisplayName "$RuleBase Inbound" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
   ```
-
