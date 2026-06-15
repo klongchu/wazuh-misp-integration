@@ -58,6 +58,7 @@ Client -> Wazuh Manager -> MISP lookup -> Telegram alert -> Active Response bloc
 | ไฟล์ | ใช้ทำอะไร |
 | --- | --- |
 | `install-wazuh-misp-full.sh` | Entry point สำหรับติดตั้งฝั่ง Wazuh Manager และเรียก `server_wazuh_misp_setup.sh` |
+| `install-wazuh-issabel-alert-call.sh` | Entry point แบบ one-line สำหรับติดตั้ง `wazuh_issabel_alert_call.py` ลง `Wazuh Manager` |
 | `server_wazuh_misp_setup.sh` | ติดตั้งและตั้งค่า Wazuh Manager ฝั่ง Server พร้อม MISP, Telegram และ Active Response |
 | `client_wazuh_sysmon_setup.ps1` | ติดตั้ง Wazuh Agent + Sysmon + Active Response ฝั่ง Windows Client |
 | `client_wazuh_linux_setup.sh` | ติดตั้ง Wazuh Agent + Active Response ฝั่ง Linux Client |
@@ -110,6 +111,14 @@ powershell.exe -ExecutionPolicy Bypass -Command "irm https://raw.githubuserconte
 ```bash
 curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_linux_setup.sh | sudo bash
 ```
+
+### Issabel Alert Call Script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/install-wazuh-issabel-alert-call.sh | sudo bash
+```
+
+> คำสั่งนี้จะติดตั้ง `wazuh_issabel_alert_call.py` ไปที่ `/var/ossec/integrations/wazuh_issabel_alert_call.py`
 
 ## ขั้นตอนติดตั้งแบบ Lab
 
@@ -290,7 +299,7 @@ sudo ls -l /var/ossec/integrations/export_misp_to_wazuh.py
 
 ใช้ `wazuh_issabel_alert_call.py` เมื่อต้องการให้ `Wazuh` โทรออกหาเบอร์ที่กำหนดผ่าน `Issabel/Asterisk` ตอนมี alert level สูง
 
-### Flow การทำงาน
+### Flow โทรออกผ่าน Issabel
 
 ```text
 Wazuh Alert JSON -> custom integration / active-response -> wazuh_issabel_alert_call.py -> Issabel AMI -> โทรออกปลายทาง
@@ -327,6 +336,14 @@ Wazuh Alert JSON -> custom integration / active-response -> wazuh_issabel_alert_
 
 ### ตัวอย่างการทดสอบสคริปต์บน Wazuh Manager
 
+ติดตั้งแบบ one-line:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/install-wazuh-issabel-alert-call.sh | sudo bash
+```
+
+สคริปต์จะบันทึกค่า config ลงไฟล์ env ที่ `/var/ossec/etc/wazuh-issabel-alert-call.env`
+
 สร้างไฟล์ตัวอย่าง `alert.json` แล้วรัน:
 
 ```bash
@@ -336,7 +353,7 @@ export TARGET_NUMBER="0812345678"
 export ISSABEL_HOST="192.168.1.20"
 export AMI_USER="admin"
 export AMI_PASS="change-me"
-python3 wazuh_issabel_alert_call.py --stdin-file alert.json
+python3 /var/ossec/integrations/wazuh_issabel_alert_call.py --stdin-file alert.json
 ```
 
 ตัวอย่าง `alert.json`:
@@ -370,6 +387,7 @@ python3 wazuh_issabel_alert_call.py --stdin-file alert.json
 ```bash
 sudo tail -f /var/ossec/logs/issabel-call.log
 sudo cat /var/ossec/tmp/issabel-call-state.json
+sudo cat /var/ossec/etc/wazuh-issabel-alert-call.env
 ```
 
 ถ้าฝั่ง `Issabel` รับคำสั่งสำเร็จ log จะมี `Call triggered` และฝั่ง `Asterisk` ควรเห็น `Originate successfully queued`
