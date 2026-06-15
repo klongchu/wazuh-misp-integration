@@ -342,7 +342,13 @@ Wazuh Alert JSON -> custom integration / active-response -> wazuh_issabel_alert_
 curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/install-wazuh-issabel-alert-call.sh | sudo bash
 ```
 
-สคริปต์จะบันทึกค่า config ลงไฟล์ env ที่ `/var/ossec/etc/wazuh-issabel-alert-call.env`
+สคริปต์จะทำให้เลย:
+
+- ติดตั้ง `wazuh_issabel_alert_call.py`
+- สร้าง wrapper `custom-issabel-call`
+- สร้าง rule `100950` ใน `/var/ossec/etc/rules/local_rules.xml`
+- เพิ่ม integration `custom-issabel-call` ลง `ossec.conf`
+- บันทึกค่า config ลงไฟล์ env ที่ `/var/ossec/etc/wazuh-issabel-alert-call.env`
 
 สร้างไฟล์ตัวอย่าง `alert.json` แล้วรัน:
 
@@ -381,6 +387,89 @@ python3 /var/ossec/integrations/wazuh_issabel_alert_call.py --stdin-file alert.j
 2. ให้ `Wazuh` ส่ง alert JSON เข้า `wazuh_issabel_alert_call.py`
 3. ตั้ง dialplan ฝั่ง `Issabel` ให้ extension หรือ context ที่ใช้สามารถโทรออกและเล่นเสียงแจ้งเตือนได้
 4. ตรวจ log ที่ `/var/ossec/logs/issabel-call.log`
+
+### ตัวอย่าง Rule สำหรับ Voice Alert
+
+installer จะเพิ่ม rule นี้ให้อัตโนมัติ ถ้ายังไม่มีอยู่
+
+แนะนำให้สร้าง custom rule แยกสำหรับงานโทรออก โดยใส่ group เช่น `issabel_call`
+
+ตัวอย่าง `local_rules.xml`:
+
+```xml
+<group name="local,issabel,">
+  <rule id="100950" level="15">
+    <if_sid>100805</if_sid>
+    <description>High severity MISP alert for Issabel voice notification</description>
+    <group>issabel_call,misp_high,</group>
+  </rule>
+</group>
+```
+
+ความหมาย:
+
+- `if_sid 100805` อ้างอิง rule MISP high severity ที่มีอยู่แล้วในโปรเจกต์นี้
+- ยก alert ให้ชัดว่าเป็นกลุ่ม `issabel_call`
+- ใช้ร่วมกับ env `ALERT_REQUIRED_GROUPS="issabel_call"`
+
+ถ้าต้องการโทรจาก rule อื่น ก็เปลี่ยน `if_sid` ได้ เช่น:
+
+- `100801` สำหรับ `misp_ip`
+- `100802` สำหรับ `misp_domain`
+- `100804` สำหรับ `misp_hash`
+- `100805` สำหรับ high severity IOC
+
+### ตัวอย่าง Integration ใน `ossec.conf`
+
+installer จะเพิ่ม block นี้ให้อัตโนมัติ ถ้ายังไม่มีอยู่
+
+เพิ่ม block นี้ใน `/var/ossec/etc/ossec.conf`:
+
+```xml
+<integration>
+  <name>custom-issabel-call</name>
+  <group>issabel_call</group>
+  <alert_format>json</alert_format>
+</integration>
+```
+
+หมายเหตุ:
+
+- ถ้าใช้ wrapper script ชื่อ `custom-issabel-call` ให้ wrapper นั้นเป็นตัว `source` env file แล้วเรียก `wazuh_issabel_alert_call.py`
+- ถ้าไม่ใช้ wrapper, Wazuh จะไม่โหลด env file อัตโนมัติจาก path ที่เราบันทึกไว้
+
+### ตัวอย่าง Wrapper Script
+
+ตัวอย่าง `/var/ossec/integrations/custom-issabel-call`:
+
+```bash
+#!/bin/bash
+ENV_FILE="/var/ossec/etc/wazuh-issabel-alert-call.env"
+SCRIPT="/var/ossec/integrations/wazuh_issabel_alert_call.py"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
+exec /usr/bin/python3 "$SCRIPT" "$@"
+```
+
+จากนั้นตั้ง permission:
+
+```bash
+sudo chown root:wazuh /var/ossec/integrations/custom-issabel-call
+sudo chmod 750 /var/ossec/integrations/custom-issabel-call
+```
+
+### ค่าที่แนะนำใน env
+
+```bash
+ALERT_LEVEL_THRESHOLD="15"
+ALERT_REQUIRED_GROUPS="issabel_call"
+ALERT_CALL_COOLDOWN="600"
+```
 
 ### ตรวจสอบหลังตั้งค่า Issabel
 
@@ -434,6 +523,8 @@ C:\Program Files (x86)\ossec-agent\ossec.log
 - ค่า `ISSABEL_HOST`, `AMI_USER`, `AMI_PASS`, `TARGET_NUMBER` ถูกต้องหรือไม่
 - `Issabel/Asterisk` เปิด `AMI` และยอมให้ IP ของ `Wazuh Manager` เชื่อมต่อหรือไม่
 - context ที่ตั้งใน `ASTERISK_CONTEXT` ใช้งานโทรออกได้จริงหรือไม่
+- wrapper integration มีการ load `/var/ossec/etc/wazuh-issabel-alert-call.env` หรือไม่
+- rule ที่ใช้โทรมี group `issabel_call` หรือ group ที่ตรงกับ `ALERT_REQUIRED_GROUPS` หรือไม่
 - log ที่ `/var/ossec/logs/issabel-call.log` มี error อะไรหรือไม่
 - ถ้ามี cooldown อยู่ สคริปต์จะ skip การโทรซ้ำชั่วคราว
 

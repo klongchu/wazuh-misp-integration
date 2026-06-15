@@ -4,6 +4,9 @@ set -e
 TMP_DIR="${TMPDIR:-/tmp}/wazuh-issabel-setup.$$"
 INTEGRATION_DIR="/var/ossec/integrations"
 SCRIPT_PATH="$INTEGRATION_DIR/wazuh_issabel_alert_call.py"
+WRAPPER_PATH="$INTEGRATION_DIR/custom-issabel-call"
+RULES_FILE="/var/ossec/etc/rules/local_rules.xml"
+OSSEC_CONF="/var/ossec/etc/ossec.conf"
 ENV_FILE="${ENV_FILE:-/var/ossec/etc/wazuh-issabel-alert-call.env}"
 
 mkdir -p "$TMP_DIR"
@@ -108,11 +111,67 @@ curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/mai
 install -d "$INTEGRATION_DIR"
 install -m 750 "$TMP_DIR/wazuh_issabel_alert_call.py" "$SCRIPT_PATH"
 
+cat > "$WRAPPER_PATH" <<'EOF'
+#!/bin/bash
+set -e
+
+ENV_FILE="/var/ossec/etc/wazuh-issabel-alert-call.env"
+SCRIPT="/var/ossec/integrations/wazuh_issabel_alert_call.py"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
+exec /usr/bin/python3 "$SCRIPT" "$@"
+EOF
+chmod 750 "$WRAPPER_PATH"
+chown root:wazuh "$WRAPPER_PATH"
+
+if [ -f "$RULES_FILE" ] && ! grep -q '<rule id="100950" level="15">' "$RULES_FILE"; then
+  cat >> "$RULES_FILE" <<'EOF'
+
+<group name="local,issabel,">
+  <rule id="100950" level="15">
+    <if_sid>100805</if_sid>
+    <description>High severity MISP alert for Issabel voice notification</description>
+    <group>issabel_call,misp_high,</group>
+  </rule>
+</group>
+EOF
+fi
+
+if ! grep -q '<name>custom-issabel-call</name>' "$OSSEC_CONF"; then
+  python3 - <<'PY' "$OSSEC_CONF"
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+block = '''  <integration>
+    <name>custom-issabel-call</name>
+    <group>issabel_call</group>
+    <alert_format>json</alert_format>
+  </integration>
+'''
+anchor = '  <integration>\n    <name>custom-telegram</name>\n    <level>12</level>\n    <alert_format>json</alert_format>\n  </integration>\n'
+if anchor in text:
+    text = text.replace(anchor, anchor + '\n' + block)
+else:
+    text += '\n' + block
+path.write_text(text, encoding='utf-8')
+PY
+fi
+
 cat <<EOF
 [INFO] Installed: $SCRIPT_PATH
+[INFO] Wrapper: $WRAPPER_PATH
+[INFO] Rule: $RULES_FILE (rule id 100950)
 [INFO] Config saved: $ENV_FILE
 [INFO] Test command:
   set -a && . "$ENV_FILE" && set +a && python3 "$SCRIPT_PATH" --stdin-file alert.json
+[INFO] Wazuh integration name:
+  custom-issabel-call
 [INFO] Next step:
-  wire script into Wazuh integration or active-response flow and load $ENV_FILE before execution
+  restart wazuh-manager and trigger rule 100950 or group issabel_call
 EOF
