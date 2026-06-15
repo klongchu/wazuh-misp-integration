@@ -61,11 +61,12 @@ Client -> Wazuh Manager -> MISP lookup -> Telegram alert -> Active Response bloc
 | `server_wazuh_misp_setup.sh` | ติดตั้งและตั้งค่า Wazuh Manager ฝั่ง Server พร้อม MISP, Telegram และ Active Response |
 | `client_wazuh_sysmon_setup.ps1` | ติดตั้ง Wazuh Agent + Sysmon + Active Response ฝั่ง Windows Client |
 | `client_wazuh_linux_setup.sh` | ติดตั้ง Wazuh Agent + Active Response ฝั่ง Linux Client |
+| `wazuh_issabel_alert_call.py` | รับ alert JSON จาก Wazuh แล้วสั่ง `Issabel/Asterisk` โทรออกผ่าน AMI |
 | `lib/wazuh_misp_common.sh` | ฟังก์ชันร่วมที่สคริปต์ฝั่ง shell ใช้งานร่วมกัน |
 | `tests/` | ชุดทดสอบของสคริปต์และ integration logic |
 | `Lab-Wazuh-Guild/` | เอกสาร Lab HTML และรูปประกอบ |
 
-> ถ้าต้องการใช้งานจริงใน repo นี้ ให้เริ่มจาก `server_wazuh_misp_setup.sh`, `client_wazuh_sysmon_setup.ps1` และ `client_wazuh_linux_setup.sh`
+> ถ้าต้องการใช้งานจริงใน repo นี้ ให้เริ่มจาก `server_wazuh_misp_setup.sh`, `client_wazuh_sysmon_setup.ps1`, `client_wazuh_linux_setup.sh` และ `wazuh_issabel_alert_call.py`
 
 ## ข้อกำหนดก่อนเริ่ม
 
@@ -285,6 +286,94 @@ sudo cat /etc/cron.d/wazuh-misp-cdb-export
 sudo ls -l /var/ossec/integrations/export_misp_to_wazuh.py
 ```
 
+## แจ้งเตือนโทรออกผ่าน Issabel Voice
+
+ใช้ `wazuh_issabel_alert_call.py` เมื่อต้องการให้ `Wazuh` โทรออกหาเบอร์ที่กำหนดผ่าน `Issabel/Asterisk` ตอนมี alert level สูง
+
+### Flow การทำงาน
+
+```text
+Wazuh Alert JSON -> custom integration / active-response -> wazuh_issabel_alert_call.py -> Issabel AMI -> โทรออกปลายทาง
+```
+
+### เงื่อนไขที่สคริปต์รองรับ
+
+- โทรเมื่อ `rule.level >= ALERT_LEVEL_THRESHOLD`
+- จำกัดเฉพาะบาง group ได้ผ่าน `ALERT_REQUIRED_GROUPS`
+- กันโทรซ้ำตาม `rule id + agent name + source ip`
+- เก็บ cooldown state และ log ลงไฟล์
+
+### Environment Variables
+
+| ตัวแปร | ความหมาย | ค่า default |
+| --- | --- | --- |
+| `ALERT_LEVEL_THRESHOLD` | ระดับ alert ขั้นต่ำที่จะโทร | `12` |
+| `ALERT_REQUIRED_GROUPS` | group ที่อนุญาตให้โทร คั่นด้วย comma | ว่าง |
+| `ALERT_CALL_COOLDOWN` | เวลากันโทรซ้ำ หน่วยวินาที | `600` |
+| `TARGET_NUMBER` | เบอร์ปลายทาง | ไม่มี ต้องกำหนด |
+| `ISSABEL_HOST` | IP/FQDN ของ Issabel | ไม่มี ต้องกำหนด |
+| `ISSABEL_PORT` | พอร์ต AMI | `5038` |
+| `AMI_USER` | ชื่อผู้ใช้ AMI | ไม่มี ต้องกำหนด |
+| `AMI_PASS` | รหัสผ่าน AMI | ไม่มี ต้องกำหนด |
+| `ASTERISK_CHANNEL_PREFIX` | channel prefix สำหรับ originate | `Local` |
+| `ASTERISK_CONTEXT` | dialplan context | `from-internal` |
+| `ASTERISK_EXTEN` | extension ที่จะให้ dialplan วิ่งต่อ | ใช้ค่า `TARGET_NUMBER` |
+| `ASTERISK_PRIORITY` | dialplan priority | `1` |
+| `ASTERISK_CALLERID` | caller ID ตอนโทรออก | `WAZUH-ALERT <9999>` |
+| `ASTERISK_TIMEOUT_MS` | timeout การ originate หน่วย ms | `30000` |
+| `ISSABEL_SOCKET_TIMEOUT` | socket timeout หน่วยวินาที | `10` |
+| `ISSABEL_STATE_FILE` | ไฟล์เก็บ cooldown state | `/var/ossec/tmp/issabel-call-state.json` |
+| `ISSABEL_LOG_FILE` | ไฟล์ log | `/var/ossec/logs/issabel-call.log` |
+
+### ตัวอย่างการทดสอบสคริปต์บน Wazuh Manager
+
+สร้างไฟล์ตัวอย่าง `alert.json` แล้วรัน:
+
+```bash
+export ALERT_LEVEL_THRESHOLD=12
+export ALERT_REQUIRED_GROUPS="sysmon_event_3,authentication_failed"
+export TARGET_NUMBER="0812345678"
+export ISSABEL_HOST="192.168.1.20"
+export AMI_USER="admin"
+export AMI_PASS="change-me"
+python3 wazuh_issabel_alert_call.py --stdin-file alert.json
+```
+
+ตัวอย่าง `alert.json`:
+
+```json
+{
+  "rule": {
+    "id": "100200",
+    "level": 15,
+    "description": "Suspicious outbound connection",
+    "groups": ["sysmon", "sysmon_event_3", "windows"]
+  },
+  "agent": {
+    "name": "win-client-01"
+  },
+  "data": {
+    "srcip": "10.10.10.25"
+  }
+}
+```
+
+### แนวทางผูกเข้ากับ Wazuh
+
+1. คัด alert ที่ต้องการโทร เช่น level `>= 12`
+2. ให้ `Wazuh` ส่ง alert JSON เข้า `wazuh_issabel_alert_call.py`
+3. ตั้ง dialplan ฝั่ง `Issabel` ให้ extension หรือ context ที่ใช้สามารถโทรออกและเล่นเสียงแจ้งเตือนได้
+4. ตรวจ log ที่ `/var/ossec/logs/issabel-call.log`
+
+### ตรวจสอบหลังตั้งค่า Issabel
+
+```bash
+sudo tail -f /var/ossec/logs/issabel-call.log
+sudo cat /var/ossec/tmp/issabel-call-state.json
+```
+
+ถ้าฝั่ง `Issabel` รับคำสั่งสำเร็จ log จะมี `Call triggered` และฝั่ง `Asterisk` ควรเห็น `Originate successfully queued`
+
 ## Troubleshooting
 
 ### 1) Windows Agent service ไม่ขึ้น
@@ -319,6 +408,16 @@ C:\Program Files (x86)\ossec-agent\ossec.log
 - Bot Token ถูกต้องหรือไม่
 - Chat ID ถูกต้องหรือไม่
 - log integration ฝั่ง manager มี error หรือไม่
+
+### 5) Issabel ไม่โทรออก
+
+ให้ตรวจ:
+
+- ค่า `ISSABEL_HOST`, `AMI_USER`, `AMI_PASS`, `TARGET_NUMBER` ถูกต้องหรือไม่
+- `Issabel/Asterisk` เปิด `AMI` และยอมให้ IP ของ `Wazuh Manager` เชื่อมต่อหรือไม่
+- context ที่ตั้งใน `ASTERISK_CONTEXT` ใช้งานโทรออกได้จริงหรือไม่
+- log ที่ `/var/ossec/logs/issabel-call.log` มี error อะไรหรือไม่
+- ถ้ามี cooldown อยู่ สคริปต์จะ skip การโทรซ้ำชั่วคราว
 
 ## ทดสอบ Firewall Block แบบ Manual บน Windows
 
