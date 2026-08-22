@@ -151,6 +151,7 @@ sudo bash server_wazuh_misp_setup.sh
 - เพิ่ม integration ลงใน `ossec.conf`
 - เพิ่ม Active Response script ฝั่ง Linux manager
 - เพิ่ม rule สำหรับ Sysmon Event ID 22 fallback
+- เพิ่ม rule กรอง noise ของ `Brother BrLog` (ไม่เก็บเป็น alert)
 - restart Wazuh Manager
 
 ### 2) ติดตั้งฝั่ง Windows Client: Wazuh Agent + Sysmon + Active Response
@@ -480,6 +481,60 @@ sudo cat /var/ossec/etc/wazuh-issabel-alert-call.env
 ```
 
 ถ้าฝั่ง `Issabel` รับคำสั่งสำเร็จ log จะมี `Call triggered` และฝั่ง `Asterisk` ควรเห็น `Originate successfully queued`
+
+## กรอง Noise ที่ไม่ต้องการเก็บ (Ignore Rules)
+
+บาง event ที่ agent ส่งมาเป็น noise ที่ไม่มีความสำคัญด้าน security แต่เกิดถี่มาก เช่น error ของ printer driver `Brother BrLog` (`FindPushAwareAppName:: Invalid Arg`) ซึ่งจะไปโดน rule `60602` และเมื่อเกิดซ้ำ ๆ ก็จะถูกรวมเป็น rule correlation `61061` ทำให้ alert รก และเปลือง storage ของ Wazuh Indexer
+
+installer จะสร้างไฟล์ `/var/ossec/etc/rules/brother_brlog_ignore.xml` ให้อัตโนมัติ เพื่อ **ไม่ให้ Wazuh เก็บ event เหล่านี้เลย**
+
+### หลักการทำงาน
+
+- `level="0"` → ไม่สร้าง alert
+- `<options>no_log</options>` → ไม่เขียนลง `alerts.json` / `archives.json` และไม่ถูก index เข้า Wazuh Indexer
+
+### ตัวอย่าง `brother_brlog_ignore.xml`
+
+```xml
+<group name="windows,windows_application,local_ignore,">
+  <rule id="100902" level="0">
+    <if_sid>60602</if_sid>
+    <field name="win.system.providerName">^Brother BrLog$</field>
+    <field name="win.system.eventID">^1001$</field>
+    <field name="win.eventdata.data" type="pcre2">FindPushAwareAppName:: Invalid Arg</field>
+    <description>Discard Brother BrLog FindPushAwareAppName noise</description>
+    <options>no_log</options>
+  </rule>
+
+  <rule id="100903" level="0">
+    <if_sid>61061</if_sid>
+    <field name="win.system.providerName">^Brother BrLog$</field>
+    <description>Discard aggregated Brother BrLog application noise</description>
+    <options>no_log</options>
+  </rule>
+</group>
+```
+
+ความหมาย:
+
+- `100902` จับ event เดี่ยว (rule `60602`) เฉพาะ provider `Brother BrLog` + Event ID `1001` + ข้อความ `FindPushAwareAppName:: Invalid Arg`
+- `100903` จับ event ที่ถูกรวมแบบ correlation (rule `61061` — "Multiple Windows error application events") ของ provider `Brother BrLog`
+- ทั้งคู่ใช้ `level="0"` + `no_log` จึงไม่ถูกเก็บและไม่แจ้งเตือน
+
+### วิธีเพิ่ม Ignore Rule ของ event อื่นเอง
+
+1. หา `rule.id` ที่ event ไปโดน (ดูจากฟิลด์ `rule.id` ใน alert JSON)
+2. หา field ที่ระบุตัวตนของ noise เช่น `win.system.providerName`, `win.system.eventID`
+3. เพิ่ม rule ใหม่โดยใช้ id ในช่วง custom (`100000`–`120000`) ที่ยังไม่ถูกใช้ พร้อม `level="0"` และ `<options>no_log</options>`
+
+### ตรวจสอบและ apply
+
+```bash
+sudo /var/ossec/bin/wazuh-analysisd -t   # ตรวจ syntax ของ rule
+sudo systemctl restart wazuh-manager
+```
+
+> หมายเหตุ: rule นี้มีผลกับ event **ใหม่** เท่านั้น ส่วนข้อมูลเก่าที่ถูก index ไปแล้วจะยังคงอยู่ ต้องลบผ่าน Wazuh Indexer / index management แยกต่างหาก
 
 ## Troubleshooting
 

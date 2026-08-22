@@ -28,6 +28,7 @@ AR_DIR="$OSSEC_DIR/active-response/bin"
 BACKUP_DIR="/root/wazuh-misp-backup-$(date +%F-%H%M%S)"
 MISP_RULE_FILE="$RULE_DIR/misp.xml"
 CDB_RULE_FILE="$RULE_DIR/misp_cdb_rules.xml"
+BROTHER_BRLOG_IGNORE_RULE_FILE="$RULE_DIR/brother_brlog_ignore.xml"
 SYSMON_RULES_FILE="$OSSEC_DIR/ruleset/rules/0595-win-sysmon_rules.xml"
 TELEGRAM_WRAPPER_FILE="$INTEGRATION_DIR/custom-telegram"
 TELEGRAM_PY_FILE="$INTEGRATION_DIR/custom-telegram.py"
@@ -142,6 +143,7 @@ EXISTING_FILES=(
   "$MISP_CONFIG_FILE"
   "$MISP_RULE_FILE"
   "$CDB_RULE_FILE"
+  "$BROTHER_BRLOG_IGNORE_RULE_FILE"
   "$TELEGRAM_WRAPPER_FILE"
   "$TELEGRAM_PY_FILE"
   "$LINUX_AR_FILE"
@@ -353,6 +355,30 @@ EOF
 
 chown root:wazuh "$MISP_RULE_FILE"
 chmod 660 "$MISP_RULE_FILE"
+
+cat > "$BROTHER_BRLOG_IGNORE_RULE_FILE" <<'EOF'
+<group name="windows,windows_application,local_ignore,">
+  <rule id="100902" level="0">
+    <if_sid>60602</if_sid>
+    <field name="win.system.providerName">^Brother BrLog$</field>
+    <field name="win.system.eventID">^1001$</field>
+    <field name="win.eventdata.data" type="pcre2">FindPushAwareAppName:: Invalid Arg</field>
+    <description>Discard Brother BrLog FindPushAwareAppName noise</description>
+    <options>no_log</options>
+  </rule>
+
+  <rule id="100903" level="0">
+    <if_sid>61061</if_sid>
+    <field name="win.system.providerName">^Brother BrLog$</field>
+    <description>Discard aggregated Brother BrLog application noise</description>
+    <options>no_log</options>
+  </rule>
+</group>
+EOF
+chown root:wazuh "$BROTHER_BRLOG_IGNORE_RULE_FILE"
+chmod 660 "$BROTHER_BRLOG_IGNORE_RULE_FILE"
+
+echo "[INFO] Brother BrLog noise will not be stored as a Wazuh alert"
 
 echo "[5/12] Create local IOC CDB lists"
 mkdir -p "$LIST_DIR"
