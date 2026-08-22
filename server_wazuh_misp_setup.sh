@@ -149,25 +149,36 @@ EXISTING_FILES=(
   "$LINUX_AR_FILE"
   "$WINDOWS_AR_BAT"
   "$WINDOWS_AR_PS1"
-  "$ENV_FILE"
+  "$WINDOWS_FIM_FILE"
 )
 
 DELETE_ON_UPDATE_FILES=()
-FOUND_EXISTING=0
+SKIP_UPDATE_FILES=()
 for file in "${EXISTING_FILES[@]}"; do
   if [ -f "$file" ]; then
-    FOUND_EXISTING=1
     echo "[INFO] พบไฟล์เดิม: $file"
+    UPDATE_FILE=""
     prompt_tty UPDATE_FILE "ต้องการอัปเดต $file หรือไม่? [y/N]: "
     UPDATE_FILE="${UPDATE_FILE:-N}"
     if [[ "$UPDATE_FILE" =~ ^[Yy]$ ]]; then
       DELETE_ON_UPDATE_FILES+=("$file")
     else
-      echo "[INFO] ยกเลิกการติดตั้ง"
-      exit 0
+      SKIP_UPDATE_FILES+=("$file")
+      echo "[INFO] เก็บไฟล์เดิมไว้และดำเนินการขั้นตอนถัดไป: $file"
     fi
   fi
 done
+
+should_update_file() {
+  local target="$1"
+  local skipped_file
+  for skipped_file in "${SKIP_UPDATE_FILES[@]}"; do
+    if [ "$skipped_file" = "$target" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
 
 if [ ! -d "$OSSEC_DIR" ]; then
   echo "[ERROR] ไม่พบ $OSSEC_DIR กรุณาติดตั้ง Wazuh Manager ก่อน"
@@ -177,11 +188,8 @@ fi
 mkdir -p "$BACKUP_DIR"
 cp "$OSSEC_CONF" "$BACKUP_DIR/ossec.conf.bak"
 
-for file in "${EXISTING_FILES[@]}"; do
-  backup_file_if_exists "$file"
-done
-
 for file in "${DELETE_ON_UPDATE_FILES[@]}"; do
+  backup_file_if_exists "$file"
   rm -f "$file"
 done
 if [ ${#DELETE_ON_UPDATE_FILES[@]} -gt 0 ]; then
@@ -229,7 +237,8 @@ export MISP_BASE_URL="$MISP_URL"
 export MISP_API_KEY="$MISP_API_KEY"
 "$INTEGRATION_DIR/export-misp-venv/bin/python" "$INTEGRATION_DIR/export_misp_to_wazuh.py" --output-dir "$LIST_DIR" --config "$MISP_CONFIG_FILE" || true
 
-cat > "$CDB_RULE_FILE" <<'EOF'
+if should_update_file "$CDB_RULE_FILE"; then
+  cat > "$CDB_RULE_FILE" <<'EOF'
 <group name="misp,cdb,ioc,">
 
   <rule id="100900" level="12">
@@ -248,43 +257,51 @@ cat > "$CDB_RULE_FILE" <<'EOF'
 
 </group>
 EOF
-chown root:wazuh "$CDB_RULE_FILE"
-chmod 660 "$CDB_RULE_FILE"
+  chown root:wazuh "$CDB_RULE_FILE"
+  chmod 660 "$CDB_RULE_FILE"
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $CDB_RULE_FILE"
+fi
 
 
 echo "[2/12] Install custom-misp"
 cd "$INTEGRATION_DIR"
 
-if [ -f custom-misp ]; then
-  cp custom-misp "$BACKUP_DIR/custom-misp.bak"
-fi
+if should_update_file "$INTEGRATION_DIR/custom-misp"; then
+  if [ -f "$LOCAL_CUSTOM_MISP" ]; then
+    echo "[INFO] ใช้ custom-misp จาก $LOCAL_CUSTOM_MISP"
+    cp "$LOCAL_CUSTOM_MISP" custom-misp
+  else
+    echo "[WARN] ไม่พบ $LOCAL_CUSTOM_MISP ใช้ fallback download"
+    wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-misp
+  fi
 
-if [ -f "$LOCAL_CUSTOM_MISP" ]; then
-  echo "[INFO] ใช้ custom-misp จาก $LOCAL_CUSTOM_MISP"
-  cp "$LOCAL_CUSTOM_MISP" custom-misp
+  chmod 750 custom-misp
+  chown root:wazuh custom-misp
+
+  echo "[3/12] Configure custom-misp"
+  sed -i "s|^MISP_BASE_URL *=.*|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|g" custom-misp || true
+  sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
 else
-  echo "[WARN] ไม่พบ $LOCAL_CUSTOM_MISP ใช้ fallback download"
-  wget -O custom-misp https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/refs/heads/main/custom-misp
+  echo "[SKIP] คงไฟล์เดิมไว้: $INTEGRATION_DIR/custom-misp"
 fi
 
-chmod 750 custom-misp
-chown root:wazuh custom-misp
-
-echo "[3/12] Configure custom-misp"
-sed -i "s|^MISP_BASE_URL *=.*|MISP_BASE_URL = \"${MISP_URL}/attributes/restSearch/\"|g" custom-misp || true
-sed -i "s|^MISP_API_KEY *=.*|MISP_API_KEY = \"${MISP_API_KEY}\"|g" custom-misp || true
-
-cat > "$MISP_CONFIG_FILE" <<EOF
+if should_update_file "$MISP_CONFIG_FILE"; then
+  cat > "$MISP_CONFIG_FILE" <<EOF
 # custom-misp runtime configuration
 MISP_BASE_URL=$MISP_URL
 MISP_API_KEY=$MISP_API_KEY
 IGNORE_WARNINGLIST=$IGNORE_WARNINGLIST_BOOL
 EOF
-chmod 640 "$MISP_CONFIG_FILE"
-chown root:wazuh "$MISP_CONFIG_FILE"
+  chmod 640 "$MISP_CONFIG_FILE"
+  chown root:wazuh "$MISP_CONFIG_FILE"
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $MISP_CONFIG_FILE"
+fi
 
 echo "[4/12] Create MISP rules"
-cat > "$MISP_RULE_FILE" <<'EOF'
+if should_update_file "$MISP_RULE_FILE"; then
+  cat > "$MISP_RULE_FILE" <<'EOF'
 <group name="misp,threat_intel,ioc,">
 
   <rule id="100620" level="3">
@@ -353,10 +370,14 @@ cat > "$MISP_RULE_FILE" <<'EOF'
 </group>
 EOF
 
-chown root:wazuh "$MISP_RULE_FILE"
-chmod 660 "$MISP_RULE_FILE"
+  chown root:wazuh "$MISP_RULE_FILE"
+  chmod 660 "$MISP_RULE_FILE"
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $MISP_RULE_FILE"
+fi
 
-cat > "$BROTHER_BRLOG_IGNORE_RULE_FILE" <<'EOF'
+if should_update_file "$BROTHER_BRLOG_IGNORE_RULE_FILE"; then
+  cat > "$BROTHER_BRLOG_IGNORE_RULE_FILE" <<'EOF'
 <group name="windows,windows_application,local_ignore,">
   <rule id="100902" level="0">
     <if_sid>60602</if_sid>
@@ -375,10 +396,12 @@ cat > "$BROTHER_BRLOG_IGNORE_RULE_FILE" <<'EOF'
   </rule>
 </group>
 EOF
-chown root:wazuh "$BROTHER_BRLOG_IGNORE_RULE_FILE"
-chmod 660 "$BROTHER_BRLOG_IGNORE_RULE_FILE"
-
-echo "[INFO] Brother BrLog noise will not be stored as a Wazuh alert"
+  chown root:wazuh "$BROTHER_BRLOG_IGNORE_RULE_FILE"
+  chmod 660 "$BROTHER_BRLOG_IGNORE_RULE_FILE"
+  echo "[INFO] Brother BrLog noise will not be stored as a Wazuh alert"
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $BROTHER_BRLOG_IGNORE_RULE_FILE"
+fi
 
 echo "[5/12] Create local IOC CDB lists"
 mkdir -p "$LIST_DIR"
@@ -423,7 +446,8 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_INTEGRATION" '  <integration>
   </integration>'
 
 echo "[8/12] Add Telegram custom integration"
-cat > "$TELEGRAM_WRAPPER_FILE" <<EOF
+if should_update_file "$TELEGRAM_WRAPPER_FILE"; then
+  cat > "$TELEGRAM_WRAPPER_FILE" <<EOF
 #!/var/ossec/framework/python/bin/python3
 import sys
 import os
@@ -508,9 +532,14 @@ try:
 except Exception as e:
     print(f"Telegram integration error: {e}")
 EOF
-chmod 750 "$TELEGRAM_WRAPPER_FILE"
-chown root:wazuh "$TELEGRAM_WRAPPER_FILE"
-rm -f "$TELEGRAM_PY_FILE"
+  chmod 750 "$TELEGRAM_WRAPPER_FILE"
+  chown root:wazuh "$TELEGRAM_WRAPPER_FILE"
+  if should_update_file "$TELEGRAM_PY_FILE"; then
+    rm -f "$TELEGRAM_PY_FILE"
+  fi
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $TELEGRAM_WRAPPER_FILE"
+fi
 
 upsert_managed_block "$OSSEC_CONF" "WAZUH_TELEGRAM_INTEGRATION" '  <integration>
     <name>custom-telegram</name>
@@ -521,7 +550,8 @@ upsert_managed_block "$OSSEC_CONF" "WAZUH_TELEGRAM_INTEGRATION" '  <integration>
 echo "[INFO] Telegram Integration: $TELEGRAM_WRAPPER_FILE"
 
 echo "[9/12] Create Linux Active Response script"
-cat > "$LINUX_AR_FILE" <<'EOF'
+if should_update_file "$LINUX_AR_FILE"; then
+  cat > "$LINUX_AR_FILE" <<'EOF'
 #!/bin/bash
 ACTION=$1
 USER=$2
@@ -551,8 +581,11 @@ fi
 exit 0
 EOF
 
-chmod 750 "$LINUX_AR_FILE"
-chown root:wazuh "$LINUX_AR_FILE"
+  chmod 750 "$LINUX_AR_FILE"
+  chown root:wazuh "$LINUX_AR_FILE"
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $LINUX_AR_FILE"
+fi
 
 if [ "$ENABLE_ACTIVE_RESPONSE" = "yes" ]; then
   upsert_managed_block "$OSSEC_CONF" "WAZUH_MISP_ACTIVE_RESPONSE" "  <command>
@@ -572,12 +605,17 @@ fi
 echo "[10/12] Create Windows Active Response files"
 mkdir -p "$WINDOWS_AR_DIR"
 
-cat > "$WINDOWS_AR_BAT" <<'EOF'
+if should_update_file "$WINDOWS_AR_BAT"; then
+  cat > "$WINDOWS_AR_BAT" <<'EOF'
 @echo off
 powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files (x86)\ossec-agent\active-response\bin\block-malicious.ps1"
 EOF
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $WINDOWS_AR_BAT"
+fi
 
-cat > "$WINDOWS_AR_PS1" <<'EOF'
+if should_update_file "$WINDOWS_AR_PS1"; then
+  cat > "$WINDOWS_AR_PS1" <<'EOF'
 $inputJson = [Console]::In.ReadToEnd()
 $log = "C:\Program Files (x86)\ossec-agent\active-response\active-response.log"
 
@@ -600,8 +638,12 @@ if ($ioc -match '^\d{1,3}(\.\d{1,3}){3}$') {
     Add-Content $log "$(Get-Date) Blocked MISP IOC IP: $ioc"
 }
 EOF
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $WINDOWS_AR_PS1"
+fi
 
-cat > "$WINDOWS_FIM_FILE" <<'EOF'
+if should_update_file "$WINDOWS_FIM_FILE"; then
+  cat > "$WINDOWS_FIM_FILE" <<'EOF'
 <syscheck>
   <disabled>no</disabled>
   <frequency>43200</frequency>
@@ -620,11 +662,11 @@ cat > "$WINDOWS_FIM_FILE" <<'EOF'
   <ignore>C:\Windows\SoftwareDistribution</ignore>
 </syscheck>
 EOF
-
-cat <<EOF
-[INFO] Windows FIM config saved: $WINDOWS_FIM_FILE
-[INFO] Apply file to Windows agent ossec.conf under <ossec_config>
-EOF
+  echo "[INFO] Windows FIM config saved: $WINDOWS_FIM_FILE"
+  echo "[INFO] Apply file to Windows agent ossec.conf under <ossec_config>"
+else
+  echo "[SKIP] คงไฟล์เดิมไว้: $WINDOWS_FIM_FILE"
+fi
 
 echo "[11/12] Patch Sysmon - Event 3 and Sysmon - Event 22 levels"
 backup_file_if_exists "$SYSMON_RULES_FILE"
