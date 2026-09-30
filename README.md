@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/mai
 powershell.exe -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1 | iex"
 
 # แบบที่ 2: รัน One-line พร้อมส่ง Parameter
-powershell.exe -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1))) -WazuhManager '192.168.1.10' -AgentGroup 'windows,sysmon,misp' -ActiveResponse 'Y'"
+powershell.exe -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create(((irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1).TrimStart([char]0xfeff)))) -WazuhManager '192.168.1.10' -AgentGroup 'windows,sysmon,misp' -ActiveResponse 'Y'"
 ```
 
 > ถ้าเป็น production หรือเครื่องใช้งานจริง แนะนำให้ดาวน์โหลดไฟล์ `.ps1` มาก่อน แล้วรันจากไฟล์ local แทน `irm | iex`
@@ -174,22 +174,31 @@ sudo bash server_wazuh_misp_setup.sh
 
 #### ตัวอย่างการรัน
 
-**1. รันแบบส่ง Parameter ครบถ้วน (Unattended / Automation)**
+**1. รันแบบ One-line (ดาวน์โหลดและรันทันทีผ่าน `irm` ไม่ต้องเซฟไฟล์)**
+```powershell
+# สำหรับเครื่องทั่วไป
+powershell.exe -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1))) -WazuhManager 'soc-agent.budhosp.com' -AgentGroup 'windows,sysmon,misp' -ActiveResponse 'Y'"
+
+# สำหรับต่างสาขา/ต่างโรงพยาบาล (ใส่ Prefix ป้องกัน Duplicate Agent Name)
+powershell.exe -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1))) -WazuhManager 'soc-agent.budhosp.com' -AgentName \"HOSP1-`$(`$env:COMPUTERNAME)\" -AgentGroup 'windows,sysmon,misp' -ActiveResponse 'Y'"
+```
+
+**2. รันแบบส่ง Parameter ครบถ้วน (ไฟล์ในเครื่อง / Local Script)**
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -WazuhManager "192.168.1.10" -AgentGroup "windows,sysmon,misp" -ActiveResponse "Y"
 ```
 
-**2. รันแบบใช้ Alias ย่อ**
+**3. รันแบบใช้ Alias ย่อ**
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -Manager "wazuh.lab.local" -Group "windows,sysmon" -AR "Y"
 ```
 
-**3. รันแบบระบุเฉพาะ Wazuh Manager (ส่วนค่าอื่นถามผ่าน Interactive Prompt)**
+**4. รันแบบระบุเฉพาะ Wazuh Manager (ส่วนค่าอื่นถามผ่าน Interactive Prompt)**
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -WazuhManager "192.168.1.10"
 ```
 
-**4. รันแบบโต้ตอบถามค่าทั้งหมด (Interactive)**
+**5. รันแบบโต้ตอบถามค่าทั้งหมด (Interactive)**
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
 ```

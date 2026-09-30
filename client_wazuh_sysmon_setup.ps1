@@ -1,4 +1,4 @@
-﻿# Boundary map for refactoring:
+# Boundary map for refactoring:
 # - Windows-specific wrapper: admin check, MSI install/update, Sysmon, ossec.conf edit, active response, service restart
 # - Shared/edit-worthy logic: config backup and parse/validate patterns reused by installer steps
 #requires -RunAsAdministrator
@@ -54,7 +54,7 @@ $ErrorActionPreference = "Stop"
 # Explicit Administrator privilege check
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Host "[ERROR] สคริปต์นี้ต้องรันด้วยสิทธิ์ Administrator (Run as Administrator)"
+    Write-Host "[ERROR] This script requires Administrator privileges (Run as Administrator)."
     exit 1
 }
 
@@ -72,7 +72,7 @@ if ([string]::IsNullOrWhiteSpace($WazuhManager)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($WazuhManager)) {
-    Write-Host "[ERROR] Wazuh Manager IP / Domain ห้ามว่าง"
+    Write-Host "[ERROR] Wazuh Manager IP / Domain cannot be empty."
     exit 1
 }
 
@@ -81,7 +81,8 @@ if ([string]::IsNullOrWhiteSpace($AgentName)) {
     $AgentNameInput = Read-Host "Agent Name [Enter = $env:COMPUTERNAME]"
     if (-not [string]::IsNullOrWhiteSpace($AgentNameInput)) {
         $AgentName = $AgentNameInput
-    } else {
+    }
+    else {
         $AgentName = $env:COMPUTERNAME
     }
 }
@@ -91,7 +92,8 @@ if ([string]::IsNullOrWhiteSpace($AgentGroup)) {
     $AgentGroupInput = Read-Host "Agent Group [Enter = windows,sysmon,misp]"
     if (-not [string]::IsNullOrWhiteSpace($AgentGroupInput)) {
         $AgentGroup = $AgentGroupInput
-    } else {
+    }
+    else {
         $AgentGroup = "windows,sysmon,misp"
     }
 }
@@ -101,7 +103,8 @@ if ([string]::IsNullOrWhiteSpace($InstallActiveResponse)) {
     $InstallActiveResponseInput = Read-Host "Install Active Response for IP blocking? [Y/n]"
     if (-not [string]::IsNullOrWhiteSpace($InstallActiveResponseInput)) {
         $InstallActiveResponse = $InstallActiveResponseInput
-    } else {
+    }
+    else {
         $InstallActiveResponse = "Y"
     }
 }
@@ -111,7 +114,8 @@ if ([string]::IsNullOrWhiteSpace($ReinstallMode)) {
     $ReinstallModeInput = Read-Host "If Wazuh Agent already exists: reinstall in-place or uninstall first? [reinstall/uninstall, default=reinstall]"
     if (-not [string]::IsNullOrWhiteSpace($ReinstallModeInput)) {
         $ReinstallMode = $ReinstallModeInput
-    } else {
+    }
+    else {
         $ReinstallMode = "reinstall"
     }
 }
@@ -435,13 +439,18 @@ if (!(Test-Path $WazuhConf)) {
         Write-Host "[INFO] Restored ossec.conf from $WazuhAgentPath\last-ossec.conf"
     }
     else {
-        Write-Host "[ERROR] ไม่พบ $WazuhConf"
+        Write-Host "[ERROR] Cannot find $WazuhConf"
         exit 1
     }
 }
 
 Copy-Item $WazuhConf "$WazuhConf.bak_$(Get-Date -Format yyyyMMdd_HHmmss)"
 $Content = Get-Content $WazuhConf -Raw
+
+if ($Content -match '<address>.*?</address>') {
+    $Content = [regex]::Replace($Content, '<address>.*?</address>', "<address>$WazuhManager</address>")
+    Write-Host "[OK] Updated Wazuh Manager address to $WazuhManager in ossec.conf"
+}
 
 if ($Content -notmatch "Microsoft-Windows-Sysmon/Operational") {
     $Block = @"
@@ -462,6 +471,7 @@ if ($Content -notmatch "Microsoft-Windows-Sysmon/Operational") {
     }
 }
 else {
+    Set-Content -Path $WazuhConf -Value $Content -Encoding UTF8
     Write-Host "[INFO] Sysmon EventChannel already present in ossec.conf"
 }
 
@@ -591,6 +601,21 @@ else {
     Write-Host "[8/10] Skip Active Response files"
 }
 
+# Ensure Agent Registration (client.keys)
+$ClientKeysPath = Join-Path $WazuhAgentPath "client.keys"
+$AgentAuthExe = Join-Path $WazuhAgentPath "agent-auth.exe"
+$NeedsRegistration = -not (Test-Path $ClientKeysPath) -or ((Get-Item $ClientKeysPath).Length -eq 0)
+
+if ($NeedsRegistration -and (Test-Path $AgentAuthExe)) {
+    Write-Host "[INFO] Agent not registered or client.keys is empty. Enrolling with $WazuhManager (port 1515)..."
+    try {
+        & $AgentAuthExe -m $WazuhManager -p 1515 -A $AgentName
+    }
+    catch {
+        Write-Host "[WARNING] agent-auth execution encountered an issue: $($_.Exception.Message)"
+    }
+}
+
 Write-Host "[9/10] Restart Wazuh Agent"
 
 $WazuhService = $null
@@ -658,7 +683,8 @@ $SysmonRunning = $ServicesToVerify | Where-Object { ($_.Name -match '^Sysmon(64)
 
 if ($null -ne $WazuhRunning -and $null -ne $SysmonRunning) {
     Write-Host "[OK] All core services (Wazuh Agent + Sysmon) are running!"
-} else {
+}
+else {
     if ($null -eq $WazuhRunning) { Write-Host "[WARNING] Wazuh Agent service is not in Running state." }
     if ($null -eq $SysmonRunning) { Write-Host "[WARNING] Sysmon service is not in Running state." }
 }
