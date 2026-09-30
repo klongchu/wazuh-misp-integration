@@ -1,4 +1,4 @@
-# Boundary map for refactoring:
+﻿# Boundary map for refactoring:
 # - Windows-specific wrapper: admin check, MSI install/update, Sysmon, ossec.conf edit, active response, service restart
 # - Shared/edit-worthy logic: config backup and parse/validate patterns reused by installer steps
 #requires -RunAsAdministrator

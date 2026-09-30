@@ -101,7 +101,11 @@ curl -fsSL https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/mai
 ### Windows Client (PowerShell Run as Administrator)
 
 ```powershell
+# แบบที่ 1: รันแบบโต้ตอบถามค่า (Interactive)
 powershell.exe -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1 | iex"
+
+# แบบที่ 2: รัน One-line พร้อมส่ง Parameter
+powershell.exe -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/klongchu/wazuh-misp-integration/main/client_wazuh_sysmon_setup.ps1))) -WazuhManager '192.168.1.10' -AgentGroup 'windows,sysmon,misp' -ActiveResponse 'Y'"
 ```
 
 > ถ้าเป็น production หรือเครื่องใช้งานจริง แนะนำให้ดาวน์โหลดไฟล์ `.ps1` มาก่อน แล้วรันจากไฟล์ local แทน `irm | iex`
@@ -158,22 +162,37 @@ sudo bash server_wazuh_misp_setup.sh
 
 เปิด PowerShell แบบ Run as Administrator แล้วรัน:
 
-**แบบที่ 1: รันแบบโต้ตอบถามค่า (Interactive)**
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
-```
+#### Parameter ที่รองรับ
 
-**แบบที่ 2: รันแบบส่ง Parameter โดยตรง (Unattended / Automation)**
+| Parameter | Alias | คำอธิบาย | ค่าเริ่มต้น |
+|---|---|---|---|
+| `-WazuhManager` | `-Manager`, `-Domain`, `-IP`, `-Server` | Wazuh Manager IP หรือ Domain (FQDN) | ไม่มี (หากไม่ระบุจะถามผ่าน prompt) |
+| `-AgentGroup` | `-Group`, `-WazuhGroup` | กลุ่มของ Agent ใน Wazuh | `windows,sysmon,misp` |
+| `-InstallActiveResponse` | `-ActiveResponse`, `-AR` | เปิดใช้งาน Active Response สำหรับ block IP (`Y`/`n`) | `Y` |
+| `-AgentName` | `-Name`, `-WazuhAgentName` | ชื่อของ Agent | ชื่อเครื่อง (`$env:COMPUTERNAME`) |
+| `-ReinstallMode` | `-Mode` | หากมี Agent เดิมอยู่แล้ว เลือกลงทับหรือถอนก่อน (`reinstall`/`uninstall`) | `reinstall` |
+
+#### ตัวอย่างการรัน
+
+**1. รันแบบส่ง Parameter ครบถ้วน (Unattended / Automation)**
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -WazuhManager "192.168.1.10" -AgentGroup "windows,sysmon,misp" -ActiveResponse "Y"
 ```
 
-Parameter ที่รองรับ:
-- `-WazuhManager` (หรือ `-Manager`, `-Domain`, `-IP`): IP หรือ FQDN ของ Wazuh Manager
-- `-AgentGroup` (หรือ `-Group`): กลุ่มของ Agent (ค่าเริ่มต้น: `windows,sysmon,misp`)
-- `-InstallActiveResponse` (หรือ `-ActiveResponse`, `-AR`): เปิดใช้งาน Active Response หรือไม่ (`Y`/`n`)
-- `-AgentName` (หรือ `-Name`): ชื่อ Agent (ค่าเริ่มต้น: ComputerName)
-- `-ReinstallMode` (หรือ `-Mode`): กรณีมี Agent อยู่แล้ว เลือกลงทับหรือถอนก่อน (`reinstall`/`uninstall`)
+**2. รันแบบใช้ Alias ย่อ**
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -Manager "wazuh.lab.local" -Group "windows,sysmon" -AR "Y"
+```
+
+**3. รันแบบระบุเฉพาะ Wazuh Manager (ส่วนค่าอื่นถามผ่าน Interactive Prompt)**
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -WazuhManager "192.168.1.10"
+```
+
+**4. รันแบบโต้ตอบถามค่าทั้งหมด (Interactive)**
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
+```
 
 > หากไม่ระบุ Parameter ใด สคริปต์จะถามค่าผ่านหน้าต่างโต้ตอบ (Interactive prompt) ให้อัตโนมัติ
 
