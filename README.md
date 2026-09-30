@@ -158,17 +158,24 @@ sudo bash server_wazuh_misp_setup.sh
 
 เปิด PowerShell แบบ Run as Administrator แล้วรัน:
 
+**แบบที่ 1: รันแบบโต้ตอบถามค่า (Interactive)**
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1
 ```
 
-สคริปต์จะถามค่าหลัก ๆ เช่น:
+**แบบที่ 2: รันแบบส่ง Parameter โดยตรง (Unattended / Automation)**
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\client_wazuh_sysmon_setup.ps1 -WazuhManager "192.168.1.10" -AgentGroup "windows,sysmon,misp" -ActiveResponse "Y"
+```
 
-- Wazuh Manager IP/FQDN
-- Agent Name
-- Agent Group ค่า default คือ `windows,sysmon,misp`
-- ต้องการติดตั้ง Active Response สำหรับ block IP หรือไม่
-- ถ้ามี Wazuh Agent อยู่แล้ว จะให้เลือก `reinstall` หรือ `uninstall`
+Parameter ที่รองรับ:
+- `-WazuhManager` (หรือ `-Manager`, `-Domain`, `-IP`): IP หรือ FQDN ของ Wazuh Manager
+- `-AgentGroup` (หรือ `-Group`): กลุ่มของ Agent (ค่าเริ่มต้น: `windows,sysmon,misp`)
+- `-InstallActiveResponse` (หรือ `-ActiveResponse`, `-AR`): เปิดใช้งาน Active Response หรือไม่ (`Y`/`n`)
+- `-AgentName` (หรือ `-Name`): ชื่อ Agent (ค่าเริ่มต้น: ComputerName)
+- `-ReinstallMode` (หรือ `-Mode`): กรณีมี Agent อยู่แล้ว เลือกลงทับหรือถอนก่อน (`reinstall`/`uninstall`)
+
+> หากไม่ระบุ Parameter ใด สคริปต์จะถามค่าผ่านหน้าต่างโต้ตอบ (Interactive prompt) ให้อัตโนมัติ
 
 สิ่งที่สคริปต์ทำ:
 

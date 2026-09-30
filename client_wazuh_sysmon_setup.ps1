@@ -2,6 +2,30 @@
 # - Windows-specific wrapper: admin check, MSI install/update, Sysmon, ossec.conf edit, active response, service restart
 # - Shared/edit-worthy logic: config backup and parse/validate patterns reused by installer steps
 #requires -RunAsAdministrator
+
+[CmdletBinding()]
+param(
+    [Parameter(Position = 0, Mandatory = $false, HelpMessage = "Wazuh Manager IP or Domain (FQDN)")]
+    [Alias("Manager", "Server", "Domain", "IP", "WazuhServer")]
+    [string]$WazuhManager,
+
+    [Parameter(Position = 1, Mandatory = $false, HelpMessage = "Wazuh Agent Group (default: windows,sysmon,misp)")]
+    [Alias("Group", "WazuhGroup")]
+    [string]$AgentGroup,
+
+    [Parameter(Position = 2, Mandatory = $false, HelpMessage = "Install Active Response for IP blocking (Y/n)")]
+    [Alias("ActiveResponse", "AR")]
+    [string]$InstallActiveResponse,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Wazuh Agent Name (default: ComputerName)")]
+    [Alias("Name", "WazuhAgentName")]
+    [string]$AgentName,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Reinstall mode: reinstall or uninstall (default: reinstall)")]
+    [Alias("Mode")]
+    [string]$ReinstallMode
+)
+
 # Wazuh Agent + Sysmon + Active Response Setup for Windows Clients
 #
 # Refactor map for later core + wrapper split:
@@ -42,32 +66,63 @@ Write-Host " Wazuh Agent + Sysmon + Active Response Setup"
 Write-Host "=============================================="
 Write-Host ""
 
-$WazuhManager = Read-Host "Wazuh Manager IP/FQDN"
-$AgentName = Read-Host "Agent Name [Enter = ComputerName]"
-$AgentGroup = Read-Host "Agent Group [Enter = windows,sysmon,misp]"
-$InstallActiveResponse = Read-Host "Install Active Response for IP blocking? [Y/n]"
-$ReinstallMode = Read-Host "If Wazuh Agent already exists: reinstall in-place or uninstall first? [reinstall/uninstall, default=reinstall]"
-
-if ([string]::IsNullOrWhiteSpace($AgentName)) {
-    $AgentName = $env:COMPUTERNAME
-}
-
-if ([string]::IsNullOrWhiteSpace($AgentGroup)) {
-    $AgentGroup = "windows,sysmon,misp"
-}
-
-if ([string]::IsNullOrWhiteSpace($InstallActiveResponse)) {
-    $InstallActiveResponse = "Y"
-}
-
-if ([string]::IsNullOrWhiteSpace($ReinstallMode)) {
-    $ReinstallMode = "reinstall"
+# 1. Wazuh Manager IP / Domain
+if ([string]::IsNullOrWhiteSpace($WazuhManager)) {
+    $WazuhManager = Read-Host "Wazuh Manager IP / Domain (FQDN)"
 }
 
 if ([string]::IsNullOrWhiteSpace($WazuhManager)) {
-    Write-Host "[ERROR] Wazuh Manager ห้ามว่าง"
+    Write-Host "[ERROR] Wazuh Manager IP / Domain ห้ามว่าง"
     exit 1
 }
+
+# 2. Agent Name
+if ([string]::IsNullOrWhiteSpace($AgentName)) {
+    $AgentNameInput = Read-Host "Agent Name [Enter = $env:COMPUTERNAME]"
+    if (-not [string]::IsNullOrWhiteSpace($AgentNameInput)) {
+        $AgentName = $AgentNameInput
+    } else {
+        $AgentName = $env:COMPUTERNAME
+    }
+}
+
+# 3. Agent Group
+if ([string]::IsNullOrWhiteSpace($AgentGroup)) {
+    $AgentGroupInput = Read-Host "Agent Group [Enter = windows,sysmon,misp]"
+    if (-not [string]::IsNullOrWhiteSpace($AgentGroupInput)) {
+        $AgentGroup = $AgentGroupInput
+    } else {
+        $AgentGroup = "windows,sysmon,misp"
+    }
+}
+
+# 4. Active Response
+if ([string]::IsNullOrWhiteSpace($InstallActiveResponse)) {
+    $InstallActiveResponseInput = Read-Host "Install Active Response for IP blocking? [Y/n]"
+    if (-not [string]::IsNullOrWhiteSpace($InstallActiveResponseInput)) {
+        $InstallActiveResponse = $InstallActiveResponseInput
+    } else {
+        $InstallActiveResponse = "Y"
+    }
+}
+
+# 5. Reinstall Mode
+if ([string]::IsNullOrWhiteSpace($ReinstallMode)) {
+    $ReinstallModeInput = Read-Host "If Wazuh Agent already exists: reinstall in-place or uninstall first? [reinstall/uninstall, default=reinstall]"
+    if (-not [string]::IsNullOrWhiteSpace($ReinstallModeInput)) {
+        $ReinstallMode = $ReinstallModeInput
+    } else {
+        $ReinstallMode = "reinstall"
+    }
+}
+
+Write-Host ""
+Write-Host "[CONFIG] Target Manager   : $WazuhManager"
+Write-Host "[CONFIG] Agent Name       : $AgentName"
+Write-Host "[CONFIG] Agent Group      : $AgentGroup"
+Write-Host "[CONFIG] Active Response  : $InstallActiveResponse"
+Write-Host "[CONFIG] Reinstall Mode   : $ReinstallMode"
+Write-Host ""
 
 $TempDir = "$env:TEMP\wazuh_sysmon"
 $WazuhMsi = "$TempDir\wazuh-agent.msi"
