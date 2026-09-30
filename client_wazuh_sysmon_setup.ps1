@@ -27,6 +27,16 @@ if (-not (Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue)) {
 
 $ErrorActionPreference = "Stop"
 
+# Explicit Administrator privilege check
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "[ERROR] สคริปต์นี้ต้องรันด้วยสิทธิ์ Administrator (Run as Administrator)"
+    exit 1
+}
+
+# Ensure TLS 1.2+ is enabled for secure downloads
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
 Write-Host "=============================================="
 Write-Host " Wazuh Agent + Sysmon + Active Response Setup"
 Write-Host "=============================================="
@@ -63,19 +73,25 @@ $TempDir = "$env:TEMP\wazuh_sysmon"
 $WazuhMsi = "$TempDir\wazuh-agent.msi"
 $WazuhMsiLog = "$TempDir\wazuh-agent-install.log"
 $WazuhAgentPath = "C:\Program Files (x86)\ossec-agent"
+if (-not (Test-Path $WazuhAgentPath) -and (Test-Path "C:\Program Files\ossec-agent")) {
+    $WazuhAgentPath = "C:\Program Files\ossec-agent"
+}
 $WazuhConf = Join-Path $WazuhAgentPath "ossec.conf"
 $ActiveResponseBinPath = Join-Path $WazuhAgentPath "active-response\bin"
 $DestBlockScript = Join-Path $ActiveResponseBinPath "block-malicious.ps1"
 $DestActionScript = Join-Path $ActiveResponseBinPath "action-script.bat"
 
+$Is64Bit = [Environment]::Is64BitOperatingSystem
+$SysmonExeName = if ($Is64Bit) { "Sysmon64.exe" } else { "Sysmon.exe" }
 $SysmonDir = "C:\Program Files\Sysmon"
-$SysmonExe = "$SysmonDir\Sysmon64.exe"
-$SysmonConfig = "$SysmonDir\sysmonconfig.xml"
+$SysmonExe = Join-Path $SysmonDir $SysmonExeName
+$SysmonConfig = Join-Path $SysmonDir "sysmonconfig.xml"
 
 $FallbackWazuhVersion = "4.14.1"
 $WazuhVersion = $FallbackWazuhVersion
 $WazuhUrl = "https://packages.wazuh.com/4.x/windows/wazuh-agent-$WazuhVersion-1.msi"
-$SysmonUrl = "https://live.sysinternals.com/Sysmon64.exe"
+$SysmonUrl = if ($Is64Bit) { "https://live.sysinternals.com/Sysmon64.exe" } else { "https://live.sysinternals.com/Sysmon.exe" }
+$SysmonZipUrl = "https://download.sysinternals.com/files/Sysmon.zip"
 $ConfigUrl = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"
 
 function Invoke-WebDownload {
@@ -200,29 +216,173 @@ if ($MsiProcess.ExitCode -eq 3010) {
 Start-Sleep -Seconds 10
 
 Write-Host "[4/10] Download Sysmon"
-Invoke-WebRequest -Uri $SysmonUrl -OutFile $SysmonExe
-
-Write-Host "[5/10] Download Sysmon Config"
-Invoke-WebRequest -Uri $ConfigUrl -OutFile $SysmonConfig
-
-Write-Host "[6/10] Install/Update Sysmon"
+$SysmonDownloaded = $false
 try {
-    if (Get-Service Sysmon64 -ErrorAction SilentlyContinue) {
-        & $SysmonExe -accepteula -c $SysmonConfig
-    }
-    else {
-        & $SysmonExe -accepteula -i $SysmonConfig
+    Invoke-WebDownload -Uri $SysmonUrl -OutFile $SysmonExe
+    if ((Test-Path $SysmonExe) -and ((Get-Item $SysmonExe).Length -gt 100000)) {
+        $SysmonDownloaded = $true
+        Write-Host "[OK] Downloaded $SysmonExeName directly."
     }
 }
 catch {
-    Write-Host "[WARNING] Sysmon command returned warning/error: $($_.Exception.Message)"
-    Write-Host "[WARNING] Continue if Sysmon service exists and config validates."
+    Write-Host "[WARNING] Direct Sysmon download failed: $($_.Exception.Message)"
 }
 
-Write-Host "[7/10] Add Sysmon EventChannel to Wazuh Agent"
-if (!(Test-Path $WazuhConf)) {
-    Write-Host "[ERROR] ไม่พบ $WazuhConf"
+if (-not $SysmonDownloaded) {
+    Write-Host "[INFO] Attempting download from Sysmon.zip fallback..."
+    $SysmonZip = "$TempDir\Sysmon.zip"
+    try {
+        Invoke-WebDownload -Uri $SysmonZipUrl -OutFile $SysmonZip
+        if (Test-Path $SysmonZip) {
+            Expand-Archive -Path $SysmonZip -DestinationPath $TempDir -Force
+            $ExtractedExe = Join-Path $TempDir $SysmonExeName
+            if (Test-Path $ExtractedExe) {
+                Copy-Item -Path $ExtractedExe -Destination $SysmonExe -Force
+                $SysmonDownloaded = $true
+                Write-Host "[OK] Extracted $SysmonExeName from Sysmon.zip."
+            }
+        }
+    }
+    catch {
+        Write-Host "[WARNING] Sysmon.zip download/extract failed: $($_.Exception.Message)"
+    }
+}
+
+if (-not $SysmonDownloaded -or -not (Test-Path $SysmonExe)) {
+    $WindowsSysmonExe = "C:\Windows\$SysmonExeName"
+    if (Test-Path $WindowsSysmonExe) {
+        Write-Host "[INFO] Found existing Sysmon binary at $WindowsSysmonExe"
+        Copy-Item -Path $WindowsSysmonExe -Destination $SysmonExe -Force
+        $SysmonDownloaded = $true
+    }
+}
+
+if (-not (Test-Path $SysmonExe) -or ((Get-Item $SysmonExe).Length -lt 100000)) {
+    Write-Host "[ERROR] Failed to download or locate a valid Sysmon executable."
     exit 1
+}
+
+Write-Host "[5/10] Download Sysmon Config"
+$ConfigDownloaded = $false
+try {
+    Invoke-WebDownload -Uri $ConfigUrl -OutFile $SysmonConfig
+    if ((Test-Path $SysmonConfig) -and ((Get-Item $SysmonConfig).Length -gt 1000)) {
+        $ConfigDownloaded = $true
+        Write-Host "[OK] Sysmon configuration downloaded successfully."
+    }
+}
+catch {
+    Write-Host "[WARNING] Cannot download Sysmon config from GitHub: $($_.Exception.Message)"
+}
+
+if (-not $ConfigDownloaded) {
+    if ((Test-Path $SysmonConfig) -and ((Get-Item $SysmonConfig).Length -gt 1000)) {
+        Write-Host "[INFO] Reusing existing local Sysmon config: $SysmonConfig"
+    }
+    else {
+        Write-Host "[WARNING] Sysmon config XML unavailable. Sysmon will be installed with default configuration."
+    }
+}
+
+Write-Host "[6/10] Install/Update Sysmon"
+$HasValidConfig = (Test-Path $SysmonConfig) -and ((Get-Item $SysmonConfig).Length -gt 1000)
+
+$ExistingSysmon = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match '^Sysmon(64)?$' -or $_.DisplayName -match '^Sysmon'
+} | Select-Object -First 1
+
+if ($null -ne $ExistingSysmon) {
+    Write-Host "[INFO] Existing Sysmon service found: $($ExistingSysmon.Name) (Status: $($ExistingSysmon.Status))"
+    Write-Host "[INFO] Updating Sysmon configuration..."
+    $SysmonArgs = @("-accepteula", "-c")
+    if ($HasValidConfig) {
+        $SysmonArgs += "`"$SysmonConfig`""
+    }
+    $SysmonProc = Start-Process -FilePath $SysmonExe -ArgumentList $SysmonArgs -Wait -NoNewWindow -PassThru
+    if ($SysmonProc.ExitCode -ne 0) {
+        Write-Host "[WARNING] Sysmon config update returned exit code $($SysmonProc.ExitCode). Retrying without config file..."
+        Start-Process -FilePath $SysmonExe -ArgumentList @("-accepteula", "-c") -Wait -NoNewWindow -PassThru | Out-Null
+    }
+}
+else {
+    Write-Host "[INFO] Installing Sysmon service and driver..."
+    $SysmonArgs = @("-accepteula", "-i")
+    if ($HasValidConfig) {
+        $SysmonArgs += "`"$SysmonConfig`""
+    }
+    $SysmonProc = Start-Process -FilePath $SysmonExe -ArgumentList $SysmonArgs -Wait -NoNewWindow -PassThru
+    if ($SysmonProc.ExitCode -ne 0 -and $HasValidConfig) {
+        Write-Host "[WARNING] Sysmon install with config failed (ExitCode $($SysmonProc.ExitCode)). Retrying with default configuration..."
+        $SysmonProc = Start-Process -FilePath $SysmonExe -ArgumentList @("-accepteula", "-i") -Wait -NoNewWindow -PassThru
+    }
+    if ($SysmonProc.ExitCode -ne 0) {
+        Write-Host "[WARNING] Sysmon installer finished with ExitCode $($SysmonProc.ExitCode)"
+    }
+}
+
+# Wait for Sysmon service and ensure it is running
+$SysmonService = $null
+for ($i = 1; $i -le 10; $i++) {
+    $SysmonService = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -match '^Sysmon(64)?$' -or $_.DisplayName -match '^Sysmon'
+    } | Select-Object -First 1
+    if ($null -ne $SysmonService) { break }
+    Start-Sleep -Seconds 2
+}
+
+if ($null -eq $SysmonService) {
+    Write-Host "[ERROR] Sysmon service not found after install/update attempt."
+    Write-Host "[INFO] Try running manually: & `"$SysmonExe`" -accepteula -i"
+}
+else {
+    Write-Host ("[INFO] Found Sysmon Service: {0} / Status: {1}" -f $SysmonService.Name, $SysmonService.Status)
+    if ($SysmonService.Status -ne 'Running') {
+        Write-Host "[INFO] Starting Sysmon service ($($SysmonService.Name))..."
+        Start-Service -Name $SysmonService.Name -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+        $SysmonService = Get-Service -Name $SysmonService.Name -ErrorAction SilentlyContinue
+    }
+
+    if ($SysmonService.Status -eq 'Running') {
+        Write-Host "[OK] Sysmon service is running."
+    }
+    else {
+        Write-Host "[WARNING] Sysmon service status is $($SysmonService.Status). Try starting manually: Start-Service $($SysmonService.Name)"
+    }
+}
+
+$SysmonDriver = Get-Service -Name SysmonDrv -ErrorAction SilentlyContinue
+if ($null -ne $SysmonDriver) {
+    if ($SysmonDriver.Status -eq 'Running') {
+        Write-Host "[OK] Sysmon filter driver (SysmonDrv) is running."
+    }
+    else {
+        Write-Host "[WARNING] SysmonDrv driver status: $($SysmonDriver.Status)"
+    }
+}
+
+Write-Host "[7/10] Configure Sysmon EventChannel and Wazuh Agent"
+try {
+    wevtutil.exe sl "Microsoft-Windows-Sysmon/Operational" /e:true 2>$null
+    Write-Host "[OK] Microsoft-Windows-Sysmon/Operational channel enabled."
+}
+catch {
+    Write-Host "[WARNING] Could not enable Sysmon event channel via wevtutil: $($_.Exception.Message)"
+}
+
+if (!(Test-Path $WazuhConf)) {
+    if (Test-Path "$WazuhAgentPath\ossec.conf.save") {
+        Copy-Item "$WazuhAgentPath\ossec.conf.save" $WazuhConf -Force
+        Write-Host "[INFO] Restored ossec.conf from $WazuhAgentPath\ossec.conf.save"
+    }
+    elseif (Test-Path "$WazuhAgentPath\last-ossec.conf") {
+        Copy-Item "$WazuhAgentPath\last-ossec.conf" $WazuhConf -Force
+        Write-Host "[INFO] Restored ossec.conf from $WazuhAgentPath\last-ossec.conf"
+    }
+    else {
+        Write-Host "[ERROR] ไม่พบ $WazuhConf"
+        exit 1
+    }
 }
 
 Copy-Item $WazuhConf "$WazuhConf.bak_$(Get-Date -Format yyyyMMdd_HHmmss)"
@@ -236,8 +396,18 @@ if ($Content -notmatch "Microsoft-Windows-Sysmon/Operational") {
     <log_format>eventchannel</log_format>
   </localfile>
 "@
-    $Content = $Content -replace "</ossec_config>", "$Block`n</ossec_config>"
-    Set-Content -Path $WazuhConf -Value $Content -Encoding UTF8
+    $LastIndex = $Content.LastIndexOf("</ossec_config>")
+    if ($LastIndex -ge 0) {
+        $Content = $Content.Substring(0, $LastIndex) + $Block + "`n" + $Content.Substring($LastIndex)
+        Set-Content -Path $WazuhConf -Value $Content -Encoding UTF8
+        Write-Host "[OK] Added Sysmon eventchannel to ossec.conf"
+    }
+    else {
+        Write-Host "[WARNING] Could not find </ossec_config> in $WazuhConf"
+    }
+}
+else {
+    Write-Host "[INFO] Sysmon EventChannel already present in ossec.conf"
 }
 
 if ($InstallActiveResponse -match '^[Yy]$') {
@@ -421,7 +591,22 @@ if ($null -eq $WazuhService -or $WazuhService.Status -ne 'Running') {
 }
 
 Write-Host "[10/10] Verify services"
-Get-Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -or ($_.Name -match 'Sysmon64') -or ($_.DisplayName -match 'Sysmon') } | Format-Table Name, DisplayName, Status -AutoSize
+$ServicesToVerify = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+    ($_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.Name -match '^ossec-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -or
+    ($_.Name -match '^Sysmon(64)?$' -or $_.DisplayName -match '^Sysmon') -or
+    ($_.Name -match '^SysmonDrv$')
+}
+$ServicesToVerify | Format-Table Name, DisplayName, Status -AutoSize
+
+$WazuhRunning = $ServicesToVerify | Where-Object { ($_.Name -match '^WazuhSvc$' -or $_.Name -match '^wazuh-agent$' -or $_.DisplayName -match '^Wazuh Agent$') -and $_.Status -eq 'Running' }
+$SysmonRunning = $ServicesToVerify | Where-Object { ($_.Name -match '^Sysmon(64)?$' -or $_.DisplayName -match '^Sysmon') -and $_.Status -eq 'Running' }
+
+if ($null -ne $WazuhRunning -and $null -ne $SysmonRunning) {
+    Write-Host "[OK] All core services (Wazuh Agent + Sysmon) are running!"
+} else {
+    if ($null -eq $WazuhRunning) { Write-Host "[WARNING] Wazuh Agent service is not in Running state." }
+    if ($null -eq $SysmonRunning) { Write-Host "[WARNING] Sysmon service is not in Running state." }
+}
 
 Write-Host "[DONE] Installation completed"
 Write-Host ""
